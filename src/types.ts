@@ -163,6 +163,54 @@ export interface Response {
   url: string;
 }
 
+/**
+ * WebSocket options for creating a connection
+ */
+export interface WebSocketOptions {
+  /**
+   * The WebSocket URL to connect to (wss:// or ws://)
+   */
+  url: string;
+
+  /**
+   * Browser profile to impersonate
+   * @default 'chrome_137'
+   */
+  browser?: BrowserProfile;
+
+  /**
+   * Additional headers to send with the WebSocket upgrade request
+   */
+  headers?: Record<string, string>;
+
+  /**
+   * Proxy URL (e.g., 'http://proxy.example.com:8080')
+   */
+  proxy?: string;
+
+  /**
+   * Callback for incoming messages (required)
+   */
+  onMessage: (data: string | Buffer) => void;
+
+  /**
+   * Callback for connection close event
+   */
+  onClose?: () => void;
+
+  /**
+   * Callback for error events
+   */
+  onError?: (error: string) => void;
+}
+
+/**
+ * Internal WebSocket connection object returned from native binding
+ */
+export interface NativeWebSocketConnection {
+  _id: number;
+}
+
 export class RequestError extends Error {
   constructor(message: string) {
     super(message);

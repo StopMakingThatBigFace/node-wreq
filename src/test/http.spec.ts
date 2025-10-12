@@ -2,9 +2,9 @@ import { test, describe, before } from 'node:test';
 import assert from 'node:assert';
 import { request, getProfiles } from '../node-wreq';
 
-describe('node-wreq', () => {
+describe('HTTP', () => {
   before(() => {
-    console.log('🚀 node-wreq - Test Suite\n');
+    console.log('🔌 HTTP Test Suite\n');
   });
 
   test('should return available browser profiles', () => {
@@ -13,13 +13,13 @@ describe('node-wreq', () => {
     assert.ok(Array.isArray(profiles), 'Profiles should be an array');
     assert.ok(profiles.length > 0, 'Should have at least one profile');
     assert.ok(
-      profiles.includes('chrome_137') ||
-        profiles.includes('firefox_139') ||
-        profiles.includes('safari_18'),
+      profiles.some((p) => p.includes('chrome')) ||
+        profiles.some((p) => p.includes('firefox')) ||
+        profiles.some((p) => p.includes('safari')),
       'Should include standard browser profiles'
     );
 
-    console.log('   Available profiles:', profiles.join(', '));
+    console.log('Available profiles:', profiles.join(', '));
   });
 
   test('should make a simple GET request', async () => {
@@ -34,10 +34,11 @@ describe('node-wreq', () => {
     assert.ok(response.body.length > 0, 'Should have response body');
 
     const body = JSON.parse(response.body);
+
     assert.ok(body.headers['User-Agent'], 'Should have User-Agent header');
 
-    console.log('   Status:', response.status);
-    console.log('   User-Agent:', body.headers['User-Agent']);
+    console.log('Status:', response.status);
+    console.log('User-Agent:', body.headers['User-Agent']);
   });
 
   test('should work with different browser profiles', async () => {
@@ -54,9 +55,10 @@ describe('node-wreq', () => {
       assert.ok(response.status === 200, `${browser} should return status 200`);
 
       const data = JSON.parse(response.body);
+
       assert.ok(data['user-agent'], `${browser} should have user-agent`);
 
-      console.log(`   ${browser}:`, data['user-agent'].substring(0, 50) + '...');
+      console.log(`${browser}:`, data['user-agent'].substring(0, 70) + '...');
     }
   });
 

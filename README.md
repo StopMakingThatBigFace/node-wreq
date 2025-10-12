@@ -9,7 +9,8 @@
 - ⚡ **Native Performance** — 50-100x faster than curl-impersonate (no process spawning)
 - 🔒 **TLS Fingerprinting** — Perfect JA3/JA4 signatures matching real browsers
 - 🌐 **HTTP/2 Fingerprinting** — Authentic SETTINGS frames, PRIORITY, and header ordering
-- 🎭 **Multiple Browser Profiles** — Chrome, Firefox, Safari, Edge
+- 🎭 **Multiple Browser Profiles** — Chrome, Firefox, Safari, Edge, Opera, OkHttp (78+ profiles)
+- 🔌 **WebSocket Support**
 - 📦 **Zero Dependencies** — Pure Rust with BoringSSL under the hood
 - 💎 **TypeScript Support** — Full type definitions included
 - 🛡️ **Protection Bypass** — Cloudflare, Akamai, and other anti-bot systems
@@ -118,10 +119,39 @@ import { request } from 'node-wreq';
 const response = await request({
   url: 'https://example.com',
   browser: 'chrome_137',
-  proxy?: 'http://proxy.example.com:8080',
-  // or with authentication:
+  // proxy: 'http://proxy.example.com:8080',
   // proxy: 'http://username:password@proxy.example.com:8080',
+  // proxy: 'socks5://proxy.example.com:1080',
 });
+```
+
+### WebSocket Connection
+
+```typescript
+import { websocket } from 'node-wreq';
+
+const ws = await websocket({
+  url: 'wss://echo.websocket.org',
+  browser: 'chrome_137',
+  onMessage: (data) => {
+    console.log('Received:', data);
+  },
+  onClose: () => {
+    console.log('Connection closed');
+  },
+  onError: (error) => {
+    console.error('Error:', error);
+  },
+});
+
+// Send text message
+await ws.send('Hello!');
+
+// Send binary message
+await ws.send(Buffer.from([1, 2, 3]));
+
+// Close connection
+await ws.close();
 ```
 
 ## 📚 API Reference
@@ -162,6 +192,33 @@ interface Response {
 
 ### `post(url: string, body?: string, options?): Promise<`[`Response`](#response)`>`
 
+### `websocket(options:` [`WebSocketOptions`](#websocketoptions)`): Promise<WebSocket>`
+
+
+**Options:**
+<a name="websocketoptions"></a>
+
+```typescript
+interface WebSocketOptions {
+  url: string;                                  // Required: WebSocket URL (ws:// or wss://)
+  browser?: BrowserProfile;                     // Default: 'chrome_137'
+  headers?: Record<string, string>;
+  proxy?: string;                               // HTTP/HTTPS/SOCKS5 proxy URL
+  onMessage: (data: string | Buffer) => void;   // Required: Message callback
+  onClose?: () => void;                         // Optional: Close callback
+  onError?: (error: string) => void;            // Optional: Error callback
+}
+```
+
+**WebSocket Methods:**
+
+```typescript
+class WebSocket {
+  send(data: string | Buffer): Promise<void>;
+  close(): Promise<void>;
+}
+```
+
 ### `getProfiles():` [`BrowserProfile[]`](#browser-profiles)
 
 Get list of available browser profiles.
@@ -170,6 +227,7 @@ Get list of available browser profiles.
 import { getProfiles } from 'node-wreq';
 
 const profiles = getProfiles();
+
 console.log(profiles);
 // ['chrome_100', 'chrome_101', ..., 'chrome_137', 'edge_101', ..., 'safari_18', ...]
 ```

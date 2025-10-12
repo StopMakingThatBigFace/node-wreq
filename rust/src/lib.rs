@@ -1,9 +1,15 @@
 mod client;
+mod websocket;
 
 use neon::prelude::*;
+use neon::types::buffer::TypedArray;
 use client::{make_request, RequestOptions, Response};
+use websocket::{connect_websocket, store_connection, get_connection, remove_connection, WebSocketOptions, WS_RUNTIME};
 use std::collections::HashMap;
+use std::sync::Arc;
 use wreq_util::Emulation;
+use futures_util::StreamExt;
+use wreq::ws::message::Message;
 
 // Parse browser string to Emulation enum
 fn parse_emulation(browser: &str) -> Emulation {
@@ -270,10 +276,272 @@ fn get_profiles(mut cx: FunctionContext) -> JsResult<JsArray> {
     Ok(js_array)
 }
 
+// WebSocket connection function
+fn websocket_connect(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    // Get the options object
+    let options_obj = cx.argument::<JsObject>(0)?;
+
+    // Get URL (required)
+    let url: Handle<JsString> = options_obj.get(&mut cx, "url")?;
+    let url = url.value(&mut cx);
+
+    // Get browser (optional, defaults to chrome_137)
+    let browser_str = options_obj
+        .get_opt(&mut cx, "browser")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(&mut cx).ok())
+        .map(|v| v.value(&mut cx))
+        .unwrap_or_else(|| "chrome_137".to_string());
+
+    let emulation = parse_emulation(&browser_str);
+
+    // Get headers (optional)
+    let mut headers = HashMap::new();
+    if let Ok(Some(headers_obj)) = options_obj.get_opt::<JsObject, _, _>(&mut cx, "headers") {
+        let keys = headers_obj.get_own_property_names(&mut cx)?;
+        let keys_vec = keys.to_vec(&mut cx)?;
+
+        for key_val in keys_vec {
+            if let Ok(key_str) = key_val.downcast::<JsString, _>(&mut cx) {
+                let key = key_str.value(&mut cx);
+                if let Ok(value) = headers_obj.get::<JsString, _, _>(&mut cx, key.as_str()) {
+                    headers.insert(key, value.value(&mut cx));
+                }
+            }
+        }
+    }
+
+    // Get proxy (optional)
+    let proxy = options_obj
+        .get_opt(&mut cx, "proxy")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(&mut cx).ok())
+        .map(|v| v.value(&mut cx));
+
+    // Get callbacks
+    let on_message: Handle<JsFunction> = options_obj.get(&mut cx, "onMessage")?;
+    let on_close_opt = options_obj
+        .get_opt::<JsFunction, _, _>(&mut cx, "onClose")?;
+    let on_error_opt = options_obj
+        .get_opt::<JsFunction, _, _>(&mut cx, "onError")?;
+
+    let options = WebSocketOptions {
+        url,
+        emulation,
+        headers,
+        proxy,
+    };
+
+    // Create a promise
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    // Keep callbacks alive
+    let on_message = Arc::new(on_message.root(&mut cx));
+    let on_close = on_close_opt.map(|f| Arc::new(f.root(&mut cx)));
+    let on_error = on_error_opt.map(|f| Arc::new(f.root(&mut cx)));
+
+    // Spawn async task
+    std::thread::spawn(move || {
+        let result: Result<_, anyhow::Error> = WS_RUNTIME.block_on(async {
+            // Connect to WebSocket
+            let (connection, mut receiver) = connect_websocket(options).await?;
+
+            // Start message receiver loop
+            let channel_clone = channel.clone();
+            let on_message_clone = on_message.clone();
+            let on_close_clone = on_close.clone();
+            let on_error_clone = on_error.clone();
+
+            tokio::spawn(async move {
+                while let Some(msg_result) = receiver.next().await {
+                    match msg_result {
+                        Ok(msg) => {
+                            match msg {
+                                Message::Text(text) => {
+                                    let text = text.to_string();
+                                    let on_message_ref = on_message_clone.clone();
+                                    channel_clone.send(move |mut cx| {
+                                        let cb = on_message_ref.to_inner(&mut cx);
+                                        let this = cx.undefined();
+                                        let args = vec![cx.string(text).upcast()];
+                                        cb.call(&mut cx, this, args)?;
+                                        Ok(())
+                                    });
+                                }
+                                Message::Binary(data) => {
+                                    let data = data.to_vec();
+                                    let on_message_ref = on_message_clone.clone();
+                                    channel_clone.send(move |mut cx| {
+                                        let cb = on_message_ref.to_inner(&mut cx);
+                                        let this = cx.undefined();
+                                        let mut buffer = cx.buffer(data.len())?;
+                                        buffer.as_mut_slice(&mut cx).copy_from_slice(&data);
+                                        let args = vec![buffer.upcast()];
+                                        cb.call(&mut cx, this, args)?;
+                                        Ok(())
+                                    });
+                                }
+                                Message::Close(_) => {
+                                    if let Some(on_close_ref) = on_close_clone.as_ref() {
+                                        let on_close_ref = on_close_ref.clone();
+                                        channel_clone.send(move |mut cx| {
+                                            let cb = on_close_ref.to_inner(&mut cx);
+                                            let this = cx.undefined();
+                                            cb.call(&mut cx, this, vec![])?;
+                                            Ok(())
+                                        });
+                                    }
+                                    break;
+                                }
+                                _ => {
+                                    // Ignore Ping/Pong messages
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if let Some(on_error_ref) = on_error_clone.as_ref() {
+                                let error_msg = format!("{:#}", e);
+                                let on_error_ref = on_error_ref.clone();
+                                channel_clone.send(move |mut cx| {
+                                    let cb = on_error_ref.to_inner(&mut cx);
+                                    let this = cx.undefined();
+                                    let args = vec![cx.string(error_msg).upcast()];
+                                    cb.call(&mut cx, this, args)?;
+                                    Ok(())
+                                });
+                            }
+                            break;
+                        }
+                    }
+                }
+            });
+
+            Ok(connection)
+        });
+
+        // Send result back to JS
+        deferred.settle_with(&channel, move |mut cx| {
+            match result {
+                Ok(connection) => {
+                    // Store connection and get ID
+                    let id = store_connection(connection);
+
+                    let obj = cx.empty_object();
+                    let id_num = cx.number(id as f64);
+                    obj.set(&mut cx, "_id", id_num)?;
+                    Ok(obj)
+                }
+                Err(e) => {
+                    let error_msg = format!("{:#}", e);
+                    cx.throw_error(error_msg)
+                }
+            }
+        });
+    });
+
+    Ok(promise)
+}
+
+// WebSocket send function
+fn websocket_send(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let ws_obj = cx.argument::<JsObject>(0)?;
+    let data = cx.argument::<JsValue>(1)?;
+
+    // Get the connection ID from the object
+    let id_val: Handle<JsNumber> = ws_obj.get(&mut cx, "_id")?;
+    let id = id_val.value(&mut cx) as u64;
+
+    // Get connection from global storage
+    let connection = match get_connection(id) {
+        Some(conn) => conn,
+        None => return cx.throw_error("WebSocket connection not found"),
+    };
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    // Check if data is string or buffer
+    let is_text = data.is_a::<JsString, _>(&mut cx);
+    let send_data = if is_text {
+        let text = data.downcast_or_throw::<JsString, _>(&mut cx)?;
+        SendData::Text(text.value(&mut cx))
+    } else if let Ok(buffer) = data.downcast::<JsBuffer, _>(&mut cx) {
+        let data = buffer.as_slice(&cx).to_vec();
+        SendData::Binary(data)
+    } else {
+        return cx.throw_error("Data must be a string or Buffer");
+    };
+
+    std::thread::spawn(move || {
+        let result = WS_RUNTIME.block_on(async {
+            match send_data {
+                SendData::Text(text) => connection.send_text(text).await,
+                SendData::Binary(data) => connection.send_binary(data).await,
+            }
+        });
+
+        deferred.settle_with(&channel, move |mut cx| {
+            match result {
+                Ok(()) => Ok(cx.undefined()),
+                Err(e) => {
+                    let error_msg = format!("{:#}", e);
+                    cx.throw_error(error_msg)
+                }
+            }
+        });
+    });
+
+    Ok(promise)
+}
+
+enum SendData {
+    Text(String),
+    Binary(Vec<u8>),
+}
+
+// WebSocket close function
+fn websocket_close(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let ws_obj = cx.argument::<JsObject>(0)?;
+
+    // Get the connection ID from the object
+    let id_val: Handle<JsNumber> = ws_obj.get(&mut cx, "_id")?;
+    let id = id_val.value(&mut cx) as u64;
+
+    // Get connection from global storage
+    let connection = match get_connection(id) {
+        Some(conn) => conn,
+        None => return cx.throw_error("WebSocket connection not found"),
+    };
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    std::thread::spawn(move || {
+        let result = WS_RUNTIME.block_on(connection.close());
+
+        // Remove connection from storage after closing
+        remove_connection(id);
+
+        deferred.settle_with(&channel, move |mut cx| {
+            match result {
+                Ok(()) => Ok(cx.undefined()),
+                Err(e) => {
+                    let error_msg = format!("{:#}", e);
+                    cx.throw_error(error_msg)
+                }
+            }
+        });
+    });
+
+    Ok(promise)
+}
+
 // Module initialization
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("request", request)?;
     cx.export_function("getProfiles", get_profiles)?;
+    cx.export_function("websocketConnect", websocket_connect)?;
+    cx.export_function("websocketSend", websocket_send)?;
+    cx.export_function("websocketClose", websocket_close)?;
     Ok(())
 }

@@ -9,8 +9,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # HTTP client with browser impersonation
-wreq = { version = "6.0.0-rc.20", default-features = false, features = ["gzip", "deflate", "socks", "cookies", "json", "webpki-roots"] }
+wreq = { version = "6.0.0-rc.20", default-features = false, features = ["gzip", "deflate", "socks", "cookies", "json", "webpki-roots", "ws"] }
 wreq-util = "3.0.0-rc.1"
+
+# WebSocket support
+futures-util = "0.3"
 
 # Neon for Node.js bindings
 neon = { version = "1.0", default-features = false, features = ["napi-6"] }
@@ -25,6 +28,9 @@ thiserror = "1.0"
 
 # Async runtime (if needed)
 tokio = { version = "1.0", features = ["full"] }
+
+# Global state management
+once_cell = "1.20"
 
 [profile.release]
 opt-level = 3

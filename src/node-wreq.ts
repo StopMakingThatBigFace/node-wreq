@@ -1,9 +1,28 @@
-import type { RequestOptions, Response, BrowserProfile } from './types';
+import type {
+  RequestOptions,
+  Response,
+  BrowserProfile,
+  WebSocketOptions,
+  NativeWebSocketConnection,
+} from './types';
 import { RequestError } from './types';
+
+interface NativeWebSocketOptions {
+  url: string;
+  browser: BrowserProfile;
+  headers: Record<string, string>;
+  proxy?: string;
+  onMessage: (data: string | Buffer) => void;
+  onClose?: () => void;
+  onError?: (error: string) => void;
+}
 
 let nativeBinding: {
   request: (options: RequestOptions) => Promise<Response>;
   getProfiles: () => string[];
+  websocketConnect: (options: NativeWebSocketOptions) => Promise<NativeWebSocketConnection>;
+  websocketSend: (ws: NativeWebSocketConnection, data: string | Buffer) => Promise<void>;
+  websocketClose: (ws: NativeWebSocketConnection) => Promise<void>;
 };
 
 function loadNativeBinding() {
@@ -26,6 +45,7 @@ function loadNativeBinding() {
   };
 
   const platformArch = platformArchMap[platform]?.[arch];
+
   if (!platformArch) {
     throw new Error(
       `Unsupported platform: ${platform}-${arch}. ` +
@@ -87,6 +107,7 @@ export async function request(options: RequestOptions): Promise<Response> {
 
   if (options.browser) {
     const profiles = getProfiles();
+
     if (!profiles.includes(options.browser)) {
       throw new RequestError(
         `Invalid browser profile: ${options.browser}. Available profiles: ${profiles.join(', ')}`
@@ -166,7 +187,116 @@ export async function post(
   return request({ ...options, url, method: 'POST', body });
 }
 
-export type { RequestOptions, Response, BrowserProfile, HttpMethod } from './types';
+/**
+ * WebSocket connection class
+ *
+ * @example
+ * ```typescript
+ * import { websocket } from 'node-wreq';
+ *
+ * const ws = await websocket({
+ *   url: 'wss://echo.websocket.org',
+ *   browser: 'chrome_137',
+ *   onMessage: (data) => {
+ *     console.log('Received:', data);
+ *   },
+ *   onClose: () => {
+ *     console.log('Connection closed');
+ *   },
+ *   onError: (error) => {
+ *     console.error('Error:', error);
+ *   }
+ * });
+ *
+ * // Send text message
+ * await ws.send('Hello World');
+ *
+ * // Send binary message
+ * await ws.send(Buffer.from([1, 2, 3]));
+ *
+ * // Close connection
+ * await ws.close();
+ * ```
+ */
+export class WebSocket {
+  private _connection: NativeWebSocketConnection;
+
+  constructor(connection: NativeWebSocketConnection) {
+    this._connection = connection;
+  }
+
+  /**
+   * Send a message (text or binary)
+   */
+  async send(data: string | Buffer): Promise<void> {
+    try {
+      await nativeBinding.websocketSend(this._connection, data);
+    } catch (error) {
+      throw new RequestError(String(error));
+    }
+  }
+
+  /**
+   * Close the WebSocket connection
+   */
+  async close(): Promise<void> {
+    try {
+      await nativeBinding.websocketClose(this._connection);
+    } catch (error) {
+      throw new RequestError(String(error));
+    }
+  }
+}
+
+/**
+ * Create a WebSocket connection with browser impersonation
+ *
+ * @param options - WebSocket options
+ * @returns Promise that resolves to the WebSocket instance
+ */
+export async function websocket(options: WebSocketOptions): Promise<WebSocket> {
+  if (!options.url) {
+    throw new RequestError('URL is required');
+  }
+
+  if (!options.onMessage) {
+    throw new RequestError('onMessage callback is required');
+  }
+
+  if (options.browser) {
+    const profiles = getProfiles();
+
+    if (!profiles.includes(options.browser)) {
+      throw new RequestError(
+        `Invalid browser profile: ${options.browser}. Available profiles: ${profiles.join(', ')}`
+      );
+    }
+  }
+
+  try {
+    const connection = await nativeBinding.websocketConnect({
+      url: options.url,
+      browser: options.browser || 'chrome_137',
+      headers: options.headers || {},
+      proxy: options.proxy,
+      onMessage: options.onMessage,
+      onClose: options.onClose,
+      onError: options.onError,
+    });
+
+    return new WebSocket(connection);
+  } catch (error) {
+    throw new RequestError(String(error));
+  }
+}
+
+export type {
+  RequestOptions,
+  Response,
+  BrowserProfile,
+  HttpMethod,
+  WebSocketOptions,
+} from './types';
 
 export type { RequestError };
 
@@ -175,4 +305,6 @@ export default {
   get,
   post,
   getProfiles,
+  websocket,
+  WebSocket,
 };
