@@ -2,7 +2,6 @@
  * Browser profile names supported
  */
 export type BrowserProfile =
-  // Chrome
   | 'chrome_100'
   | 'chrome_101'
   | 'chrome_104'
@@ -32,13 +31,11 @@ export type BrowserProfile =
   | 'chrome_135'
   | 'chrome_136'
   | 'chrome_137'
-  // Edge
   | 'edge_101'
   | 'edge_122'
   | 'edge_127'
   | 'edge_131'
   | 'edge_134'
-  // Safari
   | 'safari_ios_17_2'
   | 'safari_ios_17_4_1'
   | 'safari_ios_16_5'
@@ -58,7 +55,6 @@ export type BrowserProfile =
   | 'safari_18_3'
   | 'safari_18_3_1'
   | 'safari_18_5'
-  // Firefox
   | 'firefox_109'
   | 'firefox_117'
   | 'firefox_128'
@@ -69,12 +65,10 @@ export type BrowserProfile =
   | 'firefox_136'
   | 'firefox_private_136'
   | 'firefox_139'
-  // Opera
   | 'opera_116'
   | 'opera_117'
   | 'opera_118'
   | 'opera_119'
-  // OkHttp
   | 'okhttp_3_9'
   | 'okhttp_3_11'
   | 'okhttp_3_13'
@@ -84,88 +78,149 @@ export type BrowserProfile =
   | 'okhttp_4_12'
   | 'okhttp_5';
 
-/**
- * HTTP method types
- */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD';
 
-/**
- * Request options for making HTTP requests with browser impersonation
- */
-export interface RequestOptions {
-  /**
-   * The URL to request
-   */
+export type HeaderTuple = [string, string];
+
+export type HeadersInit =
+  | Record<string, string | number | boolean | null | undefined>
+  | HeaderTuple[]
+  | Iterable<HeaderTuple>;
+
+export type BodyInit = string | URLSearchParams | Buffer | ArrayBuffer | ArrayBufferView;
+
+export interface RequestLike {
   url: string;
+  method?: string;
+  headers?: HeadersInit;
+  body?: unknown;
+  signal?: AbortSignal | null;
+  bodyUsed?: boolean;
+  arrayBuffer?: () => Promise<ArrayBuffer>;
+}
 
-  /**
-   * Browser profile to impersonate
-   * @default 'chrome_137'
-   */
+export type RequestInput = string | URL | RequestLike;
+
+export interface HookState {
+  [key: string]: unknown;
+}
+
+export interface CookieJarCookie {
+  name: string;
+  value: string;
+}
+
+export interface CookieJar {
+  getCookies(url: string): Promise<CookieJarCookie[]> | CookieJarCookie[];
+  setCookie(cookie: string, url: string): Promise<void> | void;
+}
+
+export interface WreqInit {
+  method?: string;
+  headers?: HeadersInit;
+  body?: BodyInit | null;
+  signal?: AbortSignal | null;
+  baseURL?: string;
+  query?: Record<string, string | number | boolean | null | undefined>;
   browser?: BrowserProfile;
-
-  /**
-   * HTTP method
-   * @default 'GET'
-   */
-  method?: HttpMethod;
-
-  /**
-   * Additional headers to send with the request
-   * Browser-specific headers will be automatically added
-   */
-  headers?: Record<string, string>;
-
-  /**
-   * Request body (for POST, PUT, PATCH requests)
-   */
-  body?: string;
-
-  /**
-   * Proxy URL (e.g., 'http://proxy.example.com:8080')
-   */
   proxy?: string;
+  timeout?: number;
+  cookieJar?: CookieJar;
+  throwHttpErrors?: boolean;
+  validateStatus?: (status: number) => boolean;
+  disableDefaultHeaders?: boolean;
+  compress?: boolean;
+  context?: Record<string, unknown>;
+  hooks?: Hooks;
+}
 
-  /**
-   * Request timeout in milliseconds
-   * @default 30000
-   */
+export interface NormalizedRequest {
+  url: string;
+  method: HttpMethod;
+  headers: import('./headers').Headers;
+  body?: BodyInit | null;
+}
+
+export interface ResolvedOptions extends Omit<WreqInit, 'headers'> {
+  headers: import('./headers').Headers;
+}
+
+export interface InitContext {
+  input: RequestInput;
+  options: WreqInit;
+  state: HookState;
+}
+
+export interface BaseHookContext {
+  request: NormalizedRequest;
+  options: ResolvedOptions;
+  attempt: number;
+  state: HookState;
+}
+
+export interface BeforeRequestContext extends BaseHookContext {}
+
+export interface AfterResponseContext extends BaseHookContext {
+  response: import('./response').Response;
+}
+
+export interface BeforeRetryContext extends BaseHookContext {
+  error: unknown;
+}
+
+export interface BeforeErrorContext extends BaseHookContext {
+  error: Error;
+}
+
+export interface Hooks {
+  init?: InitHook[];
+  beforeRequest?: BeforeRequestHook[];
+  afterResponse?: AfterResponseHook[];
+  beforeRetry?: BeforeRetryHook[];
+  beforeError?: BeforeErrorHook[];
+}
+
+export type InitHook = (ctx: InitContext) => void | Promise<void>;
+export type BeforeRequestHook = (
+  ctx: BeforeRequestContext,
+) => void | import('./response').Response | Promise<void | import('./response').Response>;
+export type AfterResponseHook = (
+  ctx: AfterResponseContext,
+) => void | import('./response').Response | Promise<void | import('./response').Response>;
+export type BeforeRetryHook = (ctx: BeforeRetryContext) => void | Promise<void>;
+export type BeforeErrorHook = (ctx: BeforeErrorContext) => Error | void | Promise<Error | void>;
+
+export interface NativeRequestOptions {
+  url: string;
+  method: HttpMethod;
+  headers: Record<string, string>;
+  body?: string;
+  browser?: BrowserProfile;
+  proxy?: string;
   timeout?: number;
 }
 
-/**
- * Response object returned from HTTP requests
- */
-export interface Response {
-  /**
-   * HTTP status code
-   */
+export interface NativeResponse {
   status: number;
-
-  /**
-   * Response headers
-   */
   headers: Record<string, string>;
-
-  /**
-   * Response body as string
-   */
   body: string;
-
-  /**
-   * Cookies set by the server
-   */
   cookies: Record<string, string>;
-
-  /**
-   * Final URL after redirects
-   */
   url: string;
 }
 
-export class RequestError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'RequestError';
-  }
+export interface ClientDefaults extends Omit<WreqInit, 'body' | 'method' | 'signal'> {
+  headers?: HeadersInit;
+  hooks?: Hooks;
+}
+
+export interface Client {
+  readonly defaults: ClientDefaults;
+  fetch(input: RequestInput, init?: WreqInit): Promise<import('./response').Response>;
+  get(input: RequestInput, init?: Omit<WreqInit, 'method'>): Promise<import('./response').Response>;
+  post(
+    input: RequestInput,
+    body?: BodyInit | null,
+    init?: Omit<WreqInit, 'method' | 'body'>,
+  ): Promise<import('./response').Response>;
+  extend(defaults: ClientDefaults): Client;
 }

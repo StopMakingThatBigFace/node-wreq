@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "sortPackageJson": false,
+  "sortImports": {
+    "sortSideEffects": true,
+    "newlinesBetween": false
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+  ],
+  "semi": true,
+  "trailingComma": "es5",
+  "singleQuote": true,
+  "bracketSpacing": true,
+  "tabWidth": 2,
+  "printWidth": 100,
+  "endOfLine": "lf"
+}

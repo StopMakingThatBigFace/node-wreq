@@ -11,8 +11,10 @@
     "artifacts": "napi artifacts",
     "clean": "rm -rf dist rust/target rust/*.node",
     "test": "npm run build && node --test dist/test/node-wreq.spec.js",
-    "format": "prettier --write \"src/**/*.{ts,js,json,md}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\""
+    "lint": "oxlint --deny-warnings src",
+    "lint:fix": "oxlint --fix src",
+    "format": "oxfmt --write \"src/**/*.ts\"",
+    "format:check": "oxfmt --check \"src/**/*.ts\""
   },
   "keywords": [
     "browser",
@@ -24,22 +26,23 @@
     "impersonation",
     "web-scraping"
   ],
-  "author": "will-work-for-meal",
+  "author": "StopMakingThatBigFace",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/will-work-for-meal/node-wreq.git"
+    "url": "git+https://github.com/StopMakingThatBigFace/node-wreq.git"
   },
   "bugs": {
-    "url": "https://github.com/will-work-for-meal/node-wreq/issues"
+    "url": "https://github.com/StopMakingThatBigFace/node-wreq/issues"
   },
-  "homepage": "https://github.com/will-work-for-meal/node-wreq#readme",
+  "homepage": "https://github.com/StopMakingThatBigFace/node-wreq#readme",
   "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "@napi-rs/cli": "^2.18.0",
-    "prettier": "^3.2.5"
+    "oxfmt": "^0.41.0",
+    "oxlint": "^1.56.0"
   },
   "engines": {
     "node": ">=18.0.0"

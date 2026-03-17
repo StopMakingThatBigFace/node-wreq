@@ -82,5 +82,8 @@ jobs:
       - name: Check TypeScript types
         run: npx tsc --noEmit
 
+      - name: Run oxlint
+        run: npm run lint
+
       - name: Check code formatting
         run: npm run format:check
