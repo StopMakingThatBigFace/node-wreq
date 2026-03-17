@@ -115,6 +115,64 @@ export interface CookieJar {
   setCookie(cookie: string, url: string): Promise<void> | void;
 }
 
+export interface RetryDecisionContext {
+  request: NormalizedRequest;
+  options: ResolvedOptions;
+  attempt: number;
+  state: HookState;
+  error?: unknown;
+  response?: import('./response').Response;
+}
+
+export interface RetryOptions {
+  limit?: number;
+  methods?: HttpMethod[];
+  statusCodes?: number[];
+  errorCodes?: string[];
+  backoff?: (ctx: RetryDecisionContext) => number | Promise<number>;
+  shouldRetry?: (ctx: RetryDecisionContext) => boolean | Promise<boolean>;
+}
+
+export type RedirectMode = 'follow' | 'manual' | 'error';
+
+export interface RedirectEntry {
+  fromUrl: string;
+  status: number;
+  location: string;
+  toUrl: string;
+  method: HttpMethod;
+}
+
+export type WebSocketBinaryType = 'blob' | 'arraybuffer';
+
+export interface RequestTimings {
+  startTime: number;
+  responseStart: number;
+  wait: number;
+  endTime?: number;
+  total?: number;
+}
+
+export interface RequestStats {
+  request: NormalizedRequest;
+  attempt: number;
+  timings: RequestTimings;
+  response?: import('./response').Response;
+  error?: Error;
+}
+
+export interface WebSocketInit {
+  headers?: HeadersInit;
+  baseURL?: string;
+  query?: Record<string, string | number | boolean | null | undefined>;
+  browser?: BrowserProfile;
+  proxy?: string;
+  timeout?: number;
+  cookieJar?: CookieJar;
+  protocols?: string | string[];
+  binaryType?: WebSocketBinaryType;
+}
+
 export interface WreqInit {
   method?: string;
   headers?: HeadersInit;
@@ -125,11 +183,15 @@ export interface WreqInit {
   browser?: BrowserProfile;
   proxy?: string;
   timeout?: number;
+  retry?: number | RetryOptions;
+  redirect?: RedirectMode;
+  maxRedirects?: number;
   cookieJar?: CookieJar;
   throwHttpErrors?: boolean;
   validateStatus?: (status: number) => boolean;
   disableDefaultHeaders?: boolean;
   compress?: boolean;
+  onStats?: (stats: RequestStats) => void | Promise<void>;
   context?: Record<string, unknown>;
   hooks?: Hooks;
 }
@@ -141,8 +203,32 @@ export interface NormalizedRequest {
   body?: BodyInit | null;
 }
 
-export interface ResolvedOptions extends Omit<WreqInit, 'headers'> {
+export interface ResolvedRetryOptions {
+  limit: number;
+  methods: HttpMethod[];
+  statusCodes: number[];
+  errorCodes: string[];
+  backoff?: RetryOptions['backoff'];
+  shouldRetry?: RetryOptions['shouldRetry'];
+}
+
+export interface ResolvedOptions extends Omit<
+  WreqInit,
+  | 'headers'
+  | 'retry'
+  | 'throwHttpErrors'
+  | 'disableDefaultHeaders'
+  | 'compress'
+  | 'redirect'
+  | 'maxRedirects'
+> {
   headers: import('./headers').Headers;
+  retry: ResolvedRetryOptions;
+  throwHttpErrors: boolean;
+  disableDefaultHeaders: boolean;
+  compress: boolean;
+  redirect: RedirectMode;
+  maxRedirects: number;
 }
 
 export interface InitContext {
@@ -166,10 +252,19 @@ export interface AfterResponseContext extends BaseHookContext {
 
 export interface BeforeRetryContext extends BaseHookContext {
   error: unknown;
+  response?: import('./response').Response;
 }
 
 export interface BeforeErrorContext extends BaseHookContext {
   error: Error;
+}
+
+export interface BeforeRedirectContext extends BaseHookContext {
+  response: import('./response').Response;
+  redirectCount: number;
+  nextUrl: string;
+  nextMethod: HttpMethod;
+  redirectChain: RedirectEntry[];
 }
 
 export interface Hooks {
@@ -178,17 +273,19 @@ export interface Hooks {
   afterResponse?: AfterResponseHook[];
   beforeRetry?: BeforeRetryHook[];
   beforeError?: BeforeErrorHook[];
+  beforeRedirect?: BeforeRedirectHook[];
 }
 
 export type InitHook = (ctx: InitContext) => void | Promise<void>;
 export type BeforeRequestHook = (
-  ctx: BeforeRequestContext,
+  ctx: BeforeRequestContext
 ) => void | import('./response').Response | Promise<void | import('./response').Response>;
 export type AfterResponseHook = (
-  ctx: AfterResponseContext,
+  ctx: AfterResponseContext
 ) => void | import('./response').Response | Promise<void | import('./response').Response>;
 export type BeforeRetryHook = (ctx: BeforeRetryContext) => void | Promise<void>;
 export type BeforeErrorHook = (ctx: BeforeErrorContext) => Error | void | Promise<Error | void>;
+export type BeforeRedirectHook = (ctx: BeforeRedirectContext) => void | Promise<void>;
 
 export interface NativeRequestOptions {
   url: string;
@@ -203,10 +300,45 @@ export interface NativeRequestOptions {
 export interface NativeResponse {
   status: number;
   headers: Record<string, string>;
-  body: string;
+  body?: string;
+  bodyHandle?: number;
   cookies: Record<string, string>;
+  setCookies?: string[];
+  timings?: RequestTimings;
   url: string;
 }
+
+export interface NativeWebSocketConnectOptions {
+  url: string;
+  headers: Record<string, string>;
+  browser?: BrowserProfile;
+  proxy?: string;
+  timeout?: number;
+  protocols: string[];
+}
+
+export interface NativeWebSocketConnection {
+  handle: number;
+  url: string;
+  protocol: string | null;
+  extensions: string | null;
+}
+
+export type NativeWebSocketReadResult =
+  | {
+      type: 'text';
+      data: string;
+    }
+  | {
+      type: 'binary';
+      data: Uint8Array;
+    }
+  | {
+      type: 'close';
+      code: number;
+      reason: string;
+      wasClean: boolean;
+    };
 
 export interface ClientDefaults extends Omit<WreqInit, 'body' | 'method' | 'signal'> {
   headers?: HeadersInit;
@@ -216,11 +348,12 @@ export interface ClientDefaults extends Omit<WreqInit, 'body' | 'method' | 'sign
 export interface Client {
   readonly defaults: ClientDefaults;
   fetch(input: RequestInput, init?: WreqInit): Promise<import('./response').Response>;
+  websocket(input: string | URL, init?: WebSocketInit): Promise<import('./websocket').WebSocket>;
   get(input: RequestInput, init?: Omit<WreqInit, 'method'>): Promise<import('./response').Response>;
   post(
     input: RequestInput,
     body?: BodyInit | null,
-    init?: Omit<WreqInit, 'method' | 'body'>,
+    init?: Omit<WreqInit, 'method' | 'body'>
   ): Promise<import('./response').Response>;
   extend(defaults: ClientDefaults): Client;
 }

@@ -39,10 +39,12 @@
   "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.0.0",
     "@napi-rs/cli": "^2.18.0",
     "oxfmt": "^0.41.0",
-    "oxlint": "^1.56.0"
+    "oxlint": "^1.56.0",
+    "ws": "^8.18.3"
   },
   "engines": {
     "node": ">=18.0.0"

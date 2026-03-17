@@ -1,7 +1,13 @@
 mod client;
 
 use neon::prelude::*;
-use client::{make_request, RequestOptions, Response};
+use neon::types::buffer::TypedArray;
+use neon::types::JsBuffer;
+use client::{
+    RequestOptions, Response, WebSocketConnectOptions, WebSocketConnection, WebSocketReadResult,
+    cancel_body, close_websocket, connect_websocket, execute_request, read_body_all,
+    read_body_chunk, read_websocket_message, send_websocket_binary, send_websocket_text,
+};
 use std::collections::HashMap;
 use wreq_util::Emulation;
 
@@ -162,6 +168,66 @@ fn js_object_to_request_options(cx: &mut FunctionContext, obj: Handle<JsObject>)
     })
 }
 
+fn js_object_to_websocket_options(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<WebSocketConnectOptions> {
+    let url: Handle<JsString> = obj.get(cx, "url")?;
+    let url = url.value(cx);
+
+    let browser_str = obj
+        .get_opt(cx, "browser")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
+        .map(|v| v.value(cx))
+        .unwrap_or_else(|| "chrome_137".to_string());
+
+    let emulation = parse_emulation(&browser_str);
+
+    let mut headers = HashMap::new();
+    if let Ok(Some(headers_obj)) = obj.get_opt::<JsObject, _, _>(cx, "headers") {
+        let keys = headers_obj.get_own_property_names(cx)?;
+        let keys_vec = keys.to_vec(cx)?;
+
+        for key_val in keys_vec {
+            if let Ok(key_str) = key_val.downcast::<JsString, _>(cx) {
+                let key = key_str.value(cx);
+                if let Ok(value) = headers_obj.get::<JsString, _, _>(cx, key.as_str()) {
+                    headers.insert(key, value.value(cx));
+                }
+            }
+        }
+    }
+
+    let proxy = obj
+        .get_opt(cx, "proxy")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
+        .map(|v| v.value(cx));
+
+    let timeout = obj
+        .get_opt(cx, "timeout")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsNumber, _>(cx).ok())
+        .map(|v| v.value(cx) as u64)
+        .unwrap_or(30000);
+
+    let mut protocols = Vec::new();
+    if let Some(values) = obj.get_opt::<JsArray, _, _>(cx, "protocols")? {
+        for value in values.to_vec(cx)? {
+            if let Ok(value) = value.downcast::<JsString, _>(cx) {
+                protocols.push(value.value(cx));
+            }
+        }
+    }
+
+    Ok(WebSocketConnectOptions {
+        url,
+        emulation,
+        headers,
+        proxy,
+        timeout,
+        protocols,
+    })
+}
+
 // Convert Response to JS object
 fn response_to_js_object<'a, C: Context<'a>>(cx: &mut C, response: Response) -> JsResult<'a, JsObject> {
     let obj = cx.empty_object();
@@ -190,9 +256,53 @@ fn response_to_js_object<'a, C: Context<'a>>(cx: &mut C, response: Response) -> 
     }
     obj.set(cx, "cookies", cookies_obj)?;
 
-    // Body
-    let body = cx.string(&response.body);
-    obj.set(cx, "body", body)?;
+    // Raw Set-Cookie headers
+    let set_cookies = JsArray::new(cx, response.set_cookies.len());
+    for (index, value) in response.set_cookies.into_iter().enumerate() {
+        let value_str = cx.string(&value);
+        set_cookies.set(cx, index as u32, value_str)?;
+    }
+    obj.set(cx, "setCookies", set_cookies)?;
+
+    // Body handle
+    let body_handle = cx.number(response.body_handle as f64);
+    obj.set(cx, "bodyHandle", body_handle)?;
+
+    Ok(obj)
+}
+
+fn websocket_to_js_object<'a, C: Context<'a>>(
+    cx: &mut C,
+    websocket: WebSocketConnection,
+) -> JsResult<'a, JsObject> {
+    let obj = cx.empty_object();
+    let handle = cx.number(websocket.handle as f64);
+    let url = cx.string(&websocket.url);
+
+    obj.set(cx, "handle", handle)?;
+    obj.set(cx, "url", url)?;
+
+    match websocket.protocol {
+        Some(protocol) => {
+            let value = cx.string(protocol);
+            obj.set(cx, "protocol", value)?;
+        }
+        None => {
+            let value = cx.null();
+            obj.set(cx, "protocol", value)?;
+        }
+    };
+
+    match websocket.extensions {
+        Some(extensions) => {
+            let value = cx.string(extensions);
+            obj.set(cx, "extensions", value)?;
+        }
+        None => {
+            let value = cx.null();
+            obj.set(cx, "extensions", value)?;
+        }
+    };
 
     Ok(obj)
 }
@@ -211,10 +321,7 @@ fn request(mut cx: FunctionContext) -> JsResult<JsPromise> {
 
     // Create a new Tokio runtime for this request
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-
-        // Make the request
-        let result = rt.block_on(make_request(options));
+        let result = execute_request(options);
 
         // Send result back to JS
         deferred.settle_with(&channel, move |mut cx| {
@@ -226,6 +333,195 @@ fn request(mut cx: FunctionContext) -> JsResult<JsPromise> {
                     cx.throw_error(error_msg)
                 }
             }
+        });
+    });
+
+    Ok(promise)
+}
+
+fn read_body_chunk_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+    let size = cx.argument_opt(1)
+        .and_then(|value| value.downcast::<JsNumber, _>(&mut cx).ok())
+        .map(|value| value.value(&mut cx) as usize)
+        .unwrap_or(65_536);
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    std::thread::spawn(move || {
+        let result = read_body_chunk(handle, size);
+
+        deferred.settle_with(&channel, move |mut cx| {
+            match result {
+                Ok((chunk, done)) => {
+                    let obj = cx.empty_object();
+                    let chunk_buffer = JsBuffer::from_slice(&mut cx, &chunk)?;
+                    let done_value = cx.boolean(done);
+                    obj.set(&mut cx, "chunk", chunk_buffer)?;
+                    obj.set(&mut cx, "done", done_value)?;
+                    Ok(obj)
+                }
+                Err(error) => cx.throw_error(format!("{:#}", error)),
+            }
+        });
+    });
+
+    Ok(promise)
+}
+
+fn read_body_all_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    std::thread::spawn(move || {
+        let result = read_body_all(handle);
+
+        deferred.settle_with(&channel, move |mut cx| {
+            match result {
+                Ok(bytes) => JsBuffer::from_slice(&mut cx, &bytes),
+                Err(error) => cx.throw_error(format!("{:#}", error)),
+            }
+        });
+    });
+
+    Ok(promise)
+}
+
+fn cancel_body_js(mut cx: FunctionContext) -> JsResult<JsBoolean> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+    Ok(cx.boolean(cancel_body(handle)))
+}
+
+fn websocket_connect_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let options_obj = cx.argument::<JsObject>(0)?;
+    let options = js_object_to_websocket_options(&mut cx, options_obj)?;
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    std::thread::spawn(move || {
+        let result = connect_websocket(options);
+
+        deferred.settle_with(&channel, move |mut cx| match result {
+            Ok(websocket) => websocket_to_js_object(&mut cx, websocket),
+            Err(error) => cx.throw_error(format!("{:#}", error)),
+        });
+    });
+
+    Ok(promise)
+}
+
+fn websocket_read_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    std::thread::spawn(move || {
+        let result = read_websocket_message(handle);
+
+        deferred.settle_with(&channel, move |mut cx| match result {
+            Ok(WebSocketReadResult::Text(text)) => {
+                let obj = cx.empty_object();
+                let type_value = cx.string("text");
+                let data_value = cx.string(text);
+                obj.set(&mut cx, "type", type_value)?;
+                obj.set(&mut cx, "data", data_value)?;
+                Ok(obj)
+            }
+            Ok(WebSocketReadResult::Binary(bytes)) => {
+                let obj = cx.empty_object();
+                let type_value = cx.string("binary");
+                let data_value = JsBuffer::from_slice(&mut cx, &bytes)?;
+                obj.set(&mut cx, "type", type_value)?;
+                obj.set(&mut cx, "data", data_value)?;
+                Ok(obj)
+            }
+            Ok(WebSocketReadResult::Close {
+                code,
+                reason,
+                was_clean,
+            }) => {
+                let obj = cx.empty_object();
+                let type_value = cx.string("close");
+                let code_value = cx.number(code as f64);
+                let reason_value = cx.string(reason);
+                let was_clean_value = cx.boolean(was_clean);
+                obj.set(&mut cx, "type", type_value)?;
+                obj.set(&mut cx, "code", code_value)?;
+                obj.set(&mut cx, "reason", reason_value)?;
+                obj.set(&mut cx, "wasClean", was_clean_value)?;
+                Ok(obj)
+            }
+            Err(error) => cx.throw_error(format!("{:#}", error)),
+        });
+    });
+
+    Ok(promise)
+}
+
+fn websocket_send_text_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+    let text = cx.argument::<JsString>(1)?.value(&mut cx);
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    std::thread::spawn(move || {
+        let result = send_websocket_text(handle, text);
+
+        deferred.settle_with(&channel, move |mut cx| match result {
+            Ok(()) => Ok(cx.undefined()),
+            Err(error) => cx.throw_error(format!("{:#}", error)),
+        });
+    });
+
+    Ok(promise)
+}
+
+fn websocket_send_binary_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+    let buffer = cx.argument::<JsBuffer>(1)?;
+    let bytes = buffer.as_slice(&cx).to_vec();
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    std::thread::spawn(move || {
+        let result = send_websocket_binary(handle, bytes);
+
+        deferred.settle_with(&channel, move |mut cx| match result {
+            Ok(()) => Ok(cx.undefined()),
+            Err(error) => cx.throw_error(format!("{:#}", error)),
+        });
+    });
+
+    Ok(promise)
+}
+
+fn websocket_close_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+    let code = cx
+        .argument_opt(1)
+        .and_then(|value| value.downcast::<JsNumber, _>(&mut cx).ok())
+        .map(|value| value.value(&mut cx) as u16);
+    let reason = cx
+        .argument_opt(2)
+        .and_then(|value| value.downcast::<JsString, _>(&mut cx).ok())
+        .map(|value| value.value(&mut cx));
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    std::thread::spawn(move || {
+        let result = close_websocket(handle, code, reason);
+
+        deferred.settle_with(&channel, move |mut cx| match result {
+            Ok(()) => Ok(cx.undefined()),
+            Err(error) => cx.throw_error(format!("{:#}", error)),
         });
     });
 
@@ -274,6 +570,14 @@ fn get_profiles(mut cx: FunctionContext) -> JsResult<JsArray> {
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("request", request)?;
+    cx.export_function("readBodyChunk", read_body_chunk_js)?;
+    cx.export_function("readBodyAll", read_body_all_js)?;
+    cx.export_function("cancelBody", cancel_body_js)?;
+    cx.export_function("websocketConnect", websocket_connect_js)?;
+    cx.export_function("websocketRead", websocket_read_js)?;
+    cx.export_function("websocketSendText", websocket_send_text_js)?;
+    cx.export_function("websocketSendBinary", websocket_send_binary_js)?;
+    cx.export_function("websocketClose", websocket_close_js)?;
     cx.export_function("getProfiles", get_profiles)?;
     Ok(())
 }

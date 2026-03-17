@@ -1,11 +1,13 @@
+import type { Response } from './response';
 import type {
   AfterResponseContext,
   BeforeErrorContext,
+  BeforeRedirectContext,
+  BeforeRetryContext,
   BeforeRequestContext,
   Hooks,
   InitContext,
 } from './types';
-import type { Response } from './response';
 
 export function mergeHooks(base?: Hooks, override?: Hooks): Hooks | undefined {
   if (!base && !override) {
@@ -18,6 +20,7 @@ export function mergeHooks(base?: Hooks, override?: Hooks): Hooks | undefined {
     afterResponse: [...(base?.afterResponse ?? []), ...(override?.afterResponse ?? [])],
     beforeRetry: [...(base?.beforeRetry ?? []), ...(override?.beforeRetry ?? [])],
     beforeError: [...(base?.beforeError ?? []), ...(override?.beforeError ?? [])],
+    beforeRedirect: [...(base?.beforeRedirect ?? []), ...(override?.beforeRedirect ?? [])],
   };
 }
 
@@ -29,7 +32,7 @@ export async function runInitHooks(hooks: Hooks | undefined, context: InitContex
 
 export async function runBeforeRequestHooks(
   hooks: Hooks | undefined,
-  context: BeforeRequestContext,
+  context: BeforeRequestContext
 ): Promise<Response | undefined> {
   for (const hook of hooks?.beforeRequest ?? []) {
     const result = await hook(context);
@@ -44,7 +47,7 @@ export async function runBeforeRequestHooks(
 
 export async function runAfterResponseHooks(
   hooks: Hooks | undefined,
-  context: AfterResponseContext,
+  context: AfterResponseContext
 ): Promise<Response> {
   let current = context.response;
 
@@ -61,7 +64,7 @@ export async function runAfterResponseHooks(
 
 export async function runBeforeErrorHooks(
   hooks: Hooks | undefined,
-  context: BeforeErrorContext,
+  context: BeforeErrorContext
 ): Promise<Error> {
   let current = context.error;
 
@@ -73,4 +76,22 @@ export async function runBeforeErrorHooks(
   }
 
   return current;
+}
+
+export async function runBeforeRetryHooks(
+  hooks: Hooks | undefined,
+  context: BeforeRetryContext
+): Promise<void> {
+  for (const hook of hooks?.beforeRetry ?? []) {
+    await hook(context);
+  }
+}
+
+export async function runBeforeRedirectHooks(
+  hooks: Hooks | undefined,
+  context: BeforeRedirectContext
+): Promise<void> {
+  for (const hook of hooks?.beforeRedirect ?? []) {
+    await hook(context);
+  }
 }
