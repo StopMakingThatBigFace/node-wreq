@@ -1,6 +1,6 @@
-import { Buffer } from 'node:buffer';
-import { WebSocketError } from './errors';
-import { Headers } from './headers';
+import { serializeEmulationOptions } from '../config/emulation';
+import { WebSocketError } from '../errors';
+import { loadCookiesIntoHeaders } from '../http/pipeline/cookies';
 import {
   nativeWebSocketClose,
   nativeWebSocketConnect,
@@ -8,205 +8,26 @@ import {
   nativeWebSocketSendBinary,
   nativeWebSocketSendText,
   validateBrowserProfile,
-} from './native';
-import type {
-  CookieJar,
-  HeadersInit,
-  NativeWebSocketReadResult,
-  WebSocketBinaryType,
-  WebSocketInit,
-} from './types';
+} from '../native';
+import type { WebSocketBinaryType, WebSocketInit } from '../types';
+import { CloseEvent } from './close-event';
+import { getSendByteLength, normalizeSendData, toMessageEventData } from './send-data';
+import {
+  normalizeHeaders,
+  normalizeProtocols,
+  resolveWebSocketUrl,
+  validateCloseCode,
+  validateCloseReason,
+} from './validation';
 
-const SUBPROTOCOL_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const DEFAULT_TIMEOUT = 30_000;
-const FORBIDDEN_WEBSOCKET_HEADERS = new Set([
-  'connection',
-  'sec-websocket-extensions',
-  'sec-websocket-key',
-  'sec-websocket-protocol',
-  'sec-websocket-version',
-  'upgrade',
-]);
-
-function appendQuery(url: URL, query: WebSocketInit['query']): void {
-  if (!query) {
-    return;
-  }
-
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === null) {
-      continue;
-    }
-
-    url.searchParams.set(key, String(value));
-  }
-}
-
-function resolveWebSocketUrl(rawUrl: string | URL, init?: WebSocketInit): string {
-  const url = init?.baseURL ? new URL(String(rawUrl), init.baseURL) : new URL(String(rawUrl));
-  appendQuery(url, init?.query);
-
-  if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
-    throw new WebSocketError(`Invalid WebSocket URL protocol: ${url.protocol}`);
-  }
-
-  if (url.hash) {
-    throw new DOMException('WebSocket URL must not include a fragment', 'SyntaxError');
-  }
-
-  return url.toString();
-}
-
-function normalizeHeaders(headers?: HeadersInit): Headers {
-  const normalized = headers instanceof Headers ? new Headers(headers) : new Headers(headers);
-
-  for (const [name] of normalized) {
-    if (FORBIDDEN_WEBSOCKET_HEADERS.has(name.toLowerCase())) {
-      throw new DOMException(`Forbidden WebSocket header: ${name}`, 'SyntaxError');
-    }
-  }
-
-  return normalized;
-}
-
-function normalizeProtocols(protocols?: string | string[]): string[] {
-  if (!protocols) {
-    return [];
-  }
-
-  const values = Array.isArray(protocols) ? protocols : [protocols];
-  const seen = new Set<string>();
-
-  for (const value of values) {
-    if (!SUBPROTOCOL_PATTERN.test(value)) {
-      throw new SyntaxError(`Invalid WebSocket subprotocol: ${value}`);
-    }
-
-    if (seen.has(value)) {
-      throw new SyntaxError(`Duplicate WebSocket subprotocol: ${value}`);
-    }
-
-    seen.add(value);
-  }
-
-  return values;
-}
-
-async function loadCookiesIntoHeaders(
-  cookieJar: CookieJar | undefined,
-  url: string,
-  headers: Headers
-) {
-  if (!cookieJar || headers.has('cookie')) {
-    return;
-  }
-
-  const cookies = await cookieJar.getCookies(url);
-  if (cookies.length === 0) {
-    return;
-  }
-
-  headers.set('cookie', cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; '));
-}
-
-function validateCloseCode(code: number): void {
-  if (code === 1000) {
-    return;
-  }
-
-  if (code >= 3000 && code <= 4999) {
-    return;
-  }
-
-  throw new DOMException(`Invalid WebSocket close code: ${code}`, 'InvalidAccessError');
-}
-
-function validateCloseReason(reason: string): void {
-  if (Buffer.byteLength(reason) > 123) {
-    throw new DOMException('WebSocket close reason must be 123 bytes or fewer', 'SyntaxError');
-  }
-}
-
-async function normalizeSendData(data: string | Blob | ArrayBuffer | ArrayBufferView): Promise<
-  | {
-      type: 'text';
-      data: string;
-    }
-  | {
-      type: 'binary';
-      data: Uint8Array;
-    }
-> {
-  if (typeof data === 'string') {
-    return {
-      type: 'text',
-      data,
-    };
-  }
-
-  if (data instanceof Blob) {
-    return {
-      type: 'binary',
-      data: new Uint8Array(await data.arrayBuffer()),
-    };
-  }
-
-  if (ArrayBuffer.isView(data)) {
-    return {
-      type: 'binary',
-      data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
-    };
-  }
-
-  if (data instanceof ArrayBuffer) {
-    return {
-      type: 'binary',
-      data: new Uint8Array(data),
-    };
-  }
-
-  throw new TypeError('Unsupported WebSocket message type');
-}
-
-function toMessageEventData(
-  result: NativeWebSocketReadResult,
-  binaryType: WebSocketBinaryType
-): unknown {
-  switch (result.type) {
-    case 'text': {
-      return result.data;
-    }
-    case 'binary': {
-      if (binaryType === 'arraybuffer') {
-        const bytes = result.data;
-        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-      }
-
-      return new Blob([result.data]);
-    }
-    case 'close': {
-      throw new TypeError('Close frames cannot be converted to message events');
-    }
-  }
-}
 
 type OpenHandler = ((event: Event) => void) | null;
 type MessageHandler = ((event: MessageEvent) => void) | null;
 type CloseHandler = ((event: CloseEvent) => void) | null;
 type ErrorHandler = ((event: Event) => void) | null;
 
-export class CloseEvent extends Event {
-  readonly code: number;
-  readonly reason: string;
-  readonly wasClean: boolean;
-
-  constructor(type: string, init?: { code?: number; reason?: string; wasClean?: boolean }) {
-    super(type);
-    this.code = init?.code ?? 1005;
-    this.reason = init?.reason ?? '';
-    this.wasClean = init?.wasClean ?? false;
-  }
-}
+export { CloseEvent };
 
 export class WebSocket extends EventTarget {
   static readonly CONNECTING = 0;
@@ -228,6 +49,7 @@ export class WebSocket extends EventTarget {
   #handle?: number;
   #protocol = '';
   #binaryType: WebSocketBinaryType;
+  #bufferedAmount = 0;
   #sendQueue = Promise.resolve();
   #settled = false;
   #onopen: OpenHandler = null;
@@ -242,6 +64,7 @@ export class WebSocket extends EventTarget {
     validateBrowserProfile(init.browser);
     const headers = normalizeHeaders(init.headers);
     const protocols = normalizeProtocols(init.protocols);
+
     if (protocols.length > 0 && headers.has('sec-websocket-protocol')) {
       throw new DOMException(
         'Do not provide sec-websocket-protocol header when protocols option is used',
@@ -279,7 +102,7 @@ export class WebSocket extends EventTarget {
   }
 
   get bufferedAmount(): number {
-    return 0;
+    return this.#bufferedAmount;
   }
 
   get onopen(): OpenHandler {
@@ -323,15 +146,20 @@ export class WebSocket extends EventTarget {
       throw new DOMException('WebSocket is not open', 'InvalidStateError');
     }
 
+    const queuedBytes = getSendByteLength(data);
+
+    this.#bufferedAmount += queuedBytes;
     this.#sendQueue = this.#sendQueue
       .then(async () => {
         const normalized = await normalizeSendData(data);
+
         if (this.#readyState !== WebSocket.OPEN || this.#handle === undefined) {
           throw new DOMException('WebSocket is not open', 'InvalidStateError');
         }
 
         if (normalized.type === 'text') {
           await nativeWebSocketSendText(this.#handle, normalized.data);
+
           return;
         }
 
@@ -339,6 +167,9 @@ export class WebSocket extends EventTarget {
       })
       .catch((error: unknown) => {
         this.#handleError(error);
+      })
+      .finally(() => {
+        this.#bufferedAmount = Math.max(0, this.#bufferedAmount - queuedBytes);
       });
   }
 
@@ -353,17 +184,14 @@ export class WebSocket extends EventTarget {
       return;
     }
 
-    if (this.#readyState === WebSocket.CONNECTING) {
-      this.#readyState = WebSocket.CLOSING;
-    } else {
-      this.#readyState = WebSocket.CLOSING;
-    }
+    this.#readyState = WebSocket.CLOSING;
 
     if (this.#handle === undefined) {
       return;
     }
 
     const handle = this.#handle;
+
     this.#handle = undefined;
 
     void nativeWebSocketClose(handle, code, reason)
@@ -384,16 +212,23 @@ export class WebSocket extends EventTarget {
       });
   }
 
-  async #connect(init: WebSocketInit, headers: Headers, protocols: string[]): Promise<void> {
+  async #connect(
+    init: WebSocketInit,
+    headers: import('../headers').Headers,
+    protocols: string[]
+  ): Promise<void> {
     await loadCookiesIntoHeaders(init.cookieJar, this.url, headers);
 
     try {
       const connection = await nativeWebSocketConnect({
         url: this.url,
-        headers: headers.toObject(),
+        headers: headers.toTuples(),
+        origHeaders: init.keepOriginalHeaderNames ? headers.toOriginalNames() : undefined,
         browser: init.browser,
+        emulationJson: serializeEmulationOptions(init),
         proxy: init.proxy,
         timeout: init.timeout ?? DEFAULT_TIMEOUT,
+        disableDefaultHeaders: init.disableDefaultHeaders ?? false,
         protocols,
       });
 
@@ -422,9 +257,11 @@ export class WebSocket extends EventTarget {
     while (this.#readyState === WebSocket.OPEN && this.#handle !== undefined) {
       try {
         const result = await nativeWebSocketRead(this.#handle);
+
         if (result.type === 'close') {
           this.#handle = undefined;
           this.#finalizeClose(result);
+
           return;
         }
 
@@ -441,6 +278,7 @@ export class WebSocket extends EventTarget {
           reason: '',
           wasClean: false,
         });
+
         return;
       }
     }
@@ -462,6 +300,7 @@ export class WebSocket extends EventTarget {
 
   #handleError(error: unknown): void {
     const event = new Event('error');
+
     Object.defineProperty(event, 'error', {
       configurable: true,
       enumerable: false,
@@ -497,6 +336,8 @@ export class WebSocket extends EventTarget {
 
 export async function websocket(url: string | URL, init?: WebSocketInit): Promise<WebSocket> {
   const socket = new WebSocket(url, init);
+
   await socket.opened;
+
   return socket;
 }

@@ -1,13 +1,25 @@
 {
   "name": "node-wreq",
   "version": "0.1.2",
-  "description": "Browser fingerprint bypass library using Rust for TLS/HTTP2 impersonation",
-  "main": "dist/node-wreq.js",
+  "description": "Node HTTP client with native browser impersonation, hooks, cookies, redirects, websockets, and timing stats",
+  "main": "./dist/node-wreq.js",
+  "module": "./dist/node-wreq.mjs",
   "types": "dist/node-wreq.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/node-wreq.d.ts",
+      "require": "./dist/node-wreq.js",
+      "import": "./dist/node-wreq.mjs",
+      "default": "./dist/node-wreq.js"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "npm run build:rust && npm run build:ts",
     "build:rust": "napi build --platform --release --cargo-cwd rust rust",
-    "build:ts": "tsc",
+    "build:ts": "node ./scripts/generate-browser-profiles.mjs && tsc && node ./scripts/postbuild.mjs",
+    "prepare:publish:main": "node ./scripts/prepare-main-package.mjs",
+    "prepare:publish:platform": "node ./scripts/prepare-platform-package.mjs",
     "artifacts": "napi artifacts",
     "clean": "rm -rf dist rust/target rust/*.node",
     "test": "npm run build && node --test dist/test/node-wreq.spec.js",
@@ -36,14 +48,14 @@
     "url": "https://github.com/StopMakingThatBigFace/node-wreq/issues"
   },
   "homepage": "https://github.com/StopMakingThatBigFace/node-wreq#readme",
-  "dependencies": {},
   "devDependencies": {
+    "@napi-rs/cli": "^2.18.0",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.0.0",
-    "@napi-rs/cli": "^2.18.0",
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0",
+    "typescript": "^5.0.0",
     "ws": "^8.18.3"
   },
   "engines": {
@@ -70,6 +82,8 @@
         "x86_64-apple-darwin",
         "aarch64-apple-darwin",
         "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
         "x86_64-pc-windows-msvc"
       ]
     }

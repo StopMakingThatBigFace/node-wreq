@@ -2,19 +2,30 @@
 
 ## How to Publish node-wreq
 
-This package uses a **single npm package** that includes pre-built native binaries for all supported platforms.
+Publishing is split into two layers:
+
+- scoped platform packages with the native `.node` binaries
+- the main `node-wreq` package with JS, types, loader logic, and `optionalDependencies`
 
 ### Package Structure
 
 When published, the package includes:
-- TypeScript compiled code (`dist/`)
-- Native binaries for all platforms (`rust/*.node`)
+- main package:
+  - CommonJS output in `dist/`
+  - ESM wrapper output in `dist/`
+  - Type declarations in `dist/`
+  - `optionalDependencies` pointing at the scoped native packages
+- scoped platform packages:
+  - one native `.node` binary each
 
-Supported platforms:
-- 🍎 macOS Intel (x64)
-- 🍎 macOS Apple Silicon (arm64)
-- 🐧 Linux x64
-- 🪟 Windows x64
+Scoped package names:
+
+- `@node-wreq/darwin-x64`
+- `@node-wreq/darwin-arm64`
+- `@node-wreq/linux-x64-gnu`
+- `@node-wreq/linux-arm64-gnu`
+- `@node-wreq/linux-x64-musl`
+- `@node-wreq/win32-x64-msvc`
 
 ### Publishing Process
 
@@ -49,10 +60,11 @@ Then create a GitHub Release from this tag. This will trigger the build workflow
 #### 3. Automated Build & Publish
 
 GitHub Actions will automatically:
-1. Build native binaries for all platforms (macOS, Linux, Windows)
-2. Collect all binaries into the `rust/` directory
-3. Build TypeScript code
-4. Publish the package to npm with all binaries included
+1. Build native binaries for all configured platforms
+2. Publish one scoped package per platform artifact
+3. Build the JS outputs
+4. Stage the main package with generated `optionalDependencies`
+5. Publish the main package to npm
 
 ### Local Testing Before Publishing
 
@@ -63,33 +75,42 @@ npm run build
 # Run tests
 npm test
 
-# Pack to see what will be published
-npm pack
+# Stage the publishable main package
+npm run prepare:publish:main -- .release/main-package
 
-# Extract and inspect
-tar -tzf node-wreq-*.tgz
-
-# Test in another project
-cd /path/to/test-project
-npm install /path/to/node-wreq/node-wreq-*.tgz
+# Inspect staged files
+find .release/main-package -maxdepth 3 -type f | sort
 ```
 
-### Manual Publishing (Not Recommended)
+### Manual Publishing (Platform Packages)
 
-If you need to publish manually:
+If you really need to publish a scoped platform package manually:
 
 ```bash
-# Build TypeScript
-npm run build:ts
+# Example: build a target
+npm run build:rust -- --target x86_64-unknown-linux-musl
 
-# Ensure all platform binaries are in rust/ directory
-ls rust/*.node
+# Stage the scoped package
+node ./scripts/prepare-platform-package.mjs \
+  --target x86_64-unknown-linux-musl \
+  --binary rust/node-wreq.linux-x64-musl.node \
+  --outDir .release/linux-x64-musl
 
-# Publish
-npm publish --access public
+# Publish it
+npm publish .release/linux-x64-musl --access public
 ```
 
-**Note:** Manual publishing requires you to have all platform binaries built locally, which is difficult without cross-compilation setup. Use GitHub Actions instead.
+### Manual Publishing (Main Package)
+
+After the platform packages for the same version exist:
+
+```bash
+npm run build:ts
+npm run prepare:publish:main -- .release/main-package
+npm publish .release/main-package --access public
+```
+
+Use GitHub Actions unless you have a specific reason not to.
 
 ## Troubleshooting
 
@@ -101,6 +122,6 @@ npm publish --access public
 
 ### Module Load Error After Install
 
-- Verify `rust/*.node` files are included in the published package
-- Check that the binary was built for the user's platform
-- Ensure file permissions are correct
+- Verify the matching scoped package for the user's platform was published
+- Verify the main package version and platform package versions match
+- Check that the loader can resolve the correct package for the user's platform

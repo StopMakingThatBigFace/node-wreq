@@ -1,4 +1,4 @@
-import type { HeaderTuple, HeadersInit } from './types';
+import type { HeaderTuple, HeadersInit } from '../types';
 
 type HeaderEntry = {
   name: string;
@@ -21,6 +21,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 export class Headers implements Iterable<HeaderTuple> {
   private readonly store = new Map<string, HeaderEntry>();
+  private entriesList: HeaderTuple[] = [];
 
   constructor(init?: HeadersInit) {
     if (!init) {
@@ -28,7 +29,7 @@ export class Headers implements Iterable<HeaderTuple> {
     }
 
     if (init instanceof Headers) {
-      for (const [name, value] of init) {
+      for (const [name, value] of init.toTuples()) {
         this.append(name, value);
       }
 
@@ -73,6 +74,8 @@ export class Headers implements Iterable<HeaderTuple> {
     const entry = this.store.get(normalized.key);
     const stringValue = String(value);
 
+    this.entriesList.push([normalized.display, stringValue]);
+
     if (entry) {
       entry.values.push(stringValue);
 
@@ -87,11 +90,17 @@ export class Headers implements Iterable<HeaderTuple> {
 
   set(name: string, value: unknown): void {
     const normalized = this.normalizeName(name);
+    const stringValue = String(value);
+
+    this.entriesList = this.entriesList.filter(
+      ([entryName]) => entryName.trim().toLowerCase() !== normalized.key
+    );
 
     this.store.set(normalized.key, {
       name: normalized.display,
-      values: [String(value)],
+      values: [stringValue],
     });
+    this.entriesList.push([normalized.display, stringValue]);
   }
 
   get(name: string): string | null {
@@ -111,6 +120,9 @@ export class Headers implements Iterable<HeaderTuple> {
     const normalized = this.normalizeName(name);
 
     this.store.delete(normalized.key);
+    this.entriesList = this.entriesList.filter(
+      ([entryName]) => entryName.trim().toLowerCase() !== normalized.key
+    );
   }
 
   toObject(): Record<string, string> {
@@ -124,7 +136,25 @@ export class Headers implements Iterable<HeaderTuple> {
   }
 
   toTuples(): HeaderTuple[] {
-    return [...this];
+    return this.entriesList.map(([name, value]) => [name, value]);
+  }
+
+  toOriginalNames(): string[] {
+    const names: string[] = [];
+    const seen = new Set<string>();
+
+    for (const [name] of this.entriesList) {
+      const normalized = name.trim().toLowerCase();
+
+      if (seen.has(normalized)) {
+        continue;
+      }
+
+      seen.add(normalized);
+      names.push(name);
+    }
+
+    return names;
   }
 
   *entries(): IterableIterator<HeaderTuple> {

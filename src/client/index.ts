@@ -1,6 +1,6 @@
-import { fetch } from './fetch';
-import { Headers } from './headers';
-import { mergeHooks } from './hooks';
+import { Headers } from '../headers';
+import { mergeHooks } from '../hooks';
+import { fetch } from '../http/fetch';
 import type {
   Client,
   ClientDefaults,
@@ -10,8 +10,8 @@ import type {
   RequestInput,
   WebSocketInit,
   WreqInit,
-} from './types';
-import { websocket } from './websocket';
+} from '../types';
+import { websocket } from '../websocket';
 
 function mergeHeaders(...sources: Array<HeadersInit | undefined>): HeaderTuple[] | undefined {
   const merged = new Headers();
@@ -22,12 +22,14 @@ function mergeHeaders(...sources: Array<HeadersInit | undefined>): HeaderTuple[]
     }
 
     const headers = source instanceof Headers ? source : new Headers(source);
-    for (const [name, value] of headers) {
+
+    for (const [name, value] of headers.toTuples()) {
       merged.set(name, value);
     }
   }
 
   const tuples = merged.toTuples();
+
   return tuples.length > 0 ? tuples : undefined;
 }
 
@@ -134,6 +136,7 @@ class WreqClient implements Client {
       hooks: mergeHooks(this.defaults.hooks, init?.hooks),
       retry: mergeRetry(this.defaults.retry, init?.retry),
     };
+
     return fetch(input, merged);
   }
 

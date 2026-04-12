@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────────────────────┐
 │  JavaScript/TypeScript Code         │
-│  request({ url, browser })          │
+│  fetch(url, init) / createClient()  │
 └──────────────┬──────────────────────┘
                ↓
 ┌──────────────────────────────────────┐
@@ -58,18 +58,18 @@ The client automatically reuses connections (HTTP/2 keep-alive).
 
 ### Parallel Requests
 
-```typescript
-// Good: Parallel requests
+```ts
+// Good: parallel requests
 const [res1, res2, res3] = await Promise.all([
-  request({ url: url1 }),
-  request({ url: url2 }),
-  request({ url: url3 }),
+  fetch(url1),
+  fetch(url2),
+  fetch(url3),
 ]);
 
-// Bad: Sequential requests
-const res1 = await request({ url: url1 });
-const res2 = await request({ url: url2 });
-const res3 = await request({ url: url3 });
+// Slower: sequential requests
+const res1 = await fetch(url1);
+const res2 = await fetch(url2);
+const res3 = await fetch(url3);
 ```
 
 ## References

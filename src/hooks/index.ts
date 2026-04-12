@@ -1,4 +1,4 @@
-import type { Response } from './response';
+import type { Response } from '../http/response';
 import type {
   AfterResponseContext,
   BeforeErrorContext,
@@ -7,7 +7,7 @@ import type {
   BeforeRequestContext,
   Hooks,
   InitContext,
-} from './types';
+} from '../types';
 
 export function mergeHooks(base?: Hooks, override?: Hooks): Hooks | undefined {
   if (!base && !override) {
@@ -70,6 +70,7 @@ export async function runBeforeErrorHooks(
 
   for (const hook of hooks?.beforeError ?? []) {
     const result = await hook({ ...context, error: current });
+
     if (result) {
       current = result;
     }

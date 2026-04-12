@@ -1,10 +1,10 @@
-import type { Response } from './response';
-import type { NormalizedRequest } from './types';
+import type { Request } from '../http/request';
+import type { Response } from '../http/response';
 
 type RequestErrorOptions = {
   code?: string;
   cause?: unknown;
-  request?: NormalizedRequest;
+  request?: Request;
   response?: Response;
   attempt?: number;
 };
@@ -12,7 +12,7 @@ type RequestErrorOptions = {
 export class RequestError extends Error {
   code?: string;
   cause?: unknown;
-  request?: NormalizedRequest;
+  request?: Request;
   response?: Response;
   attempt?: number;
 
