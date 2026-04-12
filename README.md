@@ -30,6 +30,12 @@ behavior that standard Node.js clients simply don't expose.
 
 TLS and HTTP/2 fingerprinting is actively used by major bot protection and WAF providers — including **Cloudflare** Bot Management, **AWS WAF** (Bot Control + CloudFront JA3 headers), **Google Cloud Armor**, **Akamai** (which maintains its own HTTP/2 fingerprint format on top of JA3/JA4), **ServicePipe** (a Russian DDoS protection and WAF provider), and various specialized anti-bot services like **DataDome** and **PerimeterX**. Correctly emulating a browser's TLS handshake and HTTP/2 SETTINGS frames is a hard requirement to get past these layers undetected.
 
+<img src="https://engineering.salesforce.com/wp-content/uploads/2022/05/salesforce-icon.png?w=32" width="16"/> [**TLS Fingerprinting with JA3 and JA3S**](https://engineering.salesforce.com/tls-fingerprinting-with-ja3-and-ja3s-247362855967/)
+
+<img src="https://developers.cloudflare.com/favicon.png" width="16"/> [**JA3/JA4 Fingerprint — Cloudflare Bot Solutions**](https://developers.cloudflare.com/bots/additional-configurations/ja3-ja4-fingerprint/)
+
+<img src="https://www.browserless.io/favicon.ico" width="16"/> [**TLS Fingerprinting: How It Works & How to Bypass It**](https://www.browserless.io/blog/tls-fingerprinting-explanation-detection-and-bypassing-it-in-playwright-and-puppeteer)
+
 > [!NOTE]
 > This only covers the transport layer. It does not help bypass JavaScript-based challenges (Cloudflare Turnstile, Akamai sensor data, Kasada, etc.), CAPTCHA, or behavioral analysis — those require a different approach entirely
 
