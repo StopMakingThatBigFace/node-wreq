@@ -28,6 +28,11 @@ behavior that standard Node.js clients simply don't expose.
 >
 >   Because TLS and HTTP/2 fingerprints evolve slowly relative to browser release cycles, a single fingerprint profile often covers many browser versions. **100+ pre-built browser device profiles** are bundled, so you don't have to figure out the right combination of settings yourself.
 
+TLS and HTTP/2 fingerprinting is actively used by major bot protection and WAF providers — including **Cloudflare** Bot Management, **AWS WAF** (Bot Control + CloudFront JA3 headers), **Google Cloud Armor**, **Akamai** (which maintains its own HTTP/2 fingerprint format on top of JA3/JA4), **ServicePipe** (a Russian DDoS protection and WAF provider), and various specialized anti-bot services like **DataDome** and **PerimeterX**. Correctly emulating a browser's TLS handshake and HTTP/2 SETTINGS frames is a hard requirement to get past these layers undetected.
+
+> [!NOTE]
+> This only covers the transport layer. It does not help bypass JavaScript-based challenges (Cloudflare Turnstile, Akamai sensor data, Kasada, etc.), CAPTCHA, or behavioral analysis — those require a different approach entirely
+
 ## install
 
 ```bash
