@@ -4,27 +4,27 @@
 
 This package helps if you need low-level control over the network layer — TLS configuration, transport fingerprinting, browser impersonation, or fine-grained HTTP/WebSocket behavior that standard Node.js clients don't expose.
 
-## Install
+## install
 
 ```bash
 npm install node-wreq
 ```
 
-## Contents
+## contents
 
-#### ⚡   **[Quick Start](#quick-start)**
-#### 🌐   **[Fetch](#fetch)**
-#### 🧩   **[Client](#client)** — shared defaults, reusable config.
-#### 🎭   **[Browser Profiles](#browser-profiles)**
-#### 🪝   **[Hooks](#hooks)** — request lifecycle, dynamic auth, retries, etc.
-#### 🍪   **[Cookies and Sessions](#cookies)**
-#### 🔁   **[Redirects and Retries](#redirects-and-retries)**
-#### 📊   **[Observability](#observability)**
-#### 🚨   **[Error Handling](#errors)**
-#### 🔌   **[WebSockets](#websockets)**
-#### 🧪   **[Networking / Transport Knobs](#networking)** — TLS, HTTP/1, HTTP/2 options; header ordering.
+#### ⚡   **[quick start](#quick-start)**
+#### 🌐   **[fetch](#fetch)**
+#### 🧩   **[client](#client)** — shared defaults, reusable config.
+#### 🎭   **[browser profiles](#browser-profiles)**
+#### 🪝   **[hooks](#hooks)** — request lifecycle, dynamic auth, retries, etc.
+#### 🍪   **[cookies and sessions](#cookies)**
+#### 🔁   **[redirects and retries](#redirects-and-retries)**
+#### 📊   **[observability](#observability)**
+#### 🚨   **[error handling](#errors)**
+#### 🔌   **[websockets](#websockets)**
+#### 🧪   **[networking / transport knobs](#networking)** — TLS, HTTP/1, HTTP/2 options; header ordering.
 
-## <a id="quick-start"></a>Quick Start [↑](#contents)
+## ⚡ <a id="quick-start"></a>quick start   ·   [↑](#contents)
 
 ```ts
 import { fetch } from 'node-wreq';
@@ -59,9 +59,9 @@ console.log(response.status);
 console.log(await response.json());
 ```
 
-## <a id="fetch"></a>Fetch [↑](#contents)
+## 🌐 <a id="fetch"></a>fetch   ·   [↑](#contents)
 
-### Simple GET
+### simple GET
 
 ```ts
 import { fetch } from 'node-wreq';
@@ -102,7 +102,7 @@ const response = await fetch('https://api.example.com/items', {
 console.log(await response.json());
 ```
 
-### Build a `Request` first
+### build a `Request` first
 
 ```ts
 import { Request, fetch } from 'node-wreq';
@@ -122,7 +122,7 @@ const response = await fetch(request, {
 console.log(await response.json());
 ```
 
-### Read extra metadata
+### read extra metadata
 
 `fetch()` returns a fetch-style `Response`, plus extra metadata under `response.wreq`.
 
@@ -148,7 +148,7 @@ const readable = response.wreq.readable();
 readable.pipe(process.stdout);
 ```
 
-## <a id="client"></a>Client [↑](#contents)
+## 🧩 <a id="client"></a>client   ·   [↑](#contents)
 
 Use `createClient(...)` when requests share defaults:
 
@@ -161,7 +161,7 @@ Use `createClient(...)` when requests share defaults:
 - retry policy
 - cookie jar
 
-### Shared defaults
+### shared defaults
 
 ```ts
 import { createClient } from 'node-wreq';
@@ -196,7 +196,7 @@ const created = await client.post(
 console.log(created.status);
 ```
 
-### Extend a client
+### extend a client
 
 ```ts
 const base = createClient({
@@ -214,7 +214,7 @@ await base.get('/health');
 await admin.get('/admin/stats');
 ```
 
-## <a id="browser-profiles"></a>Browser Profiles [↑](#contents)
+## 🎭 <a id="browser-profiles"></a>browser profiles   ·   [↑](#contents)
 
 Inspect the available profiles at runtime:
 
@@ -235,7 +235,7 @@ Typical profiles include browser families like:
 - Opera
 - OkHttp
 
-## <a id="hooks"></a>Hooks [↑](#contents)
+## 🪝 <a id="hooks"></a>hooks   ·   [↑](#contents)
 
 Hooks are the request pipeline.
 
@@ -248,7 +248,7 @@ Available phases:
 - `beforeError`
 - `beforeRedirect`
 
-### Common pattern: auth, tracing, proxy rotation
+### common pattern: auth, tracing, proxy rotation
 
 ```ts
 import { createClient } from 'node-wreq';
@@ -301,7 +301,7 @@ const client = createClient({
 });
 ```
 
-### Replace a response in `afterResponse`
+### replace a response in `afterResponse`
 
 ```ts
 import { Response, fetch } from 'node-wreq';
@@ -327,7 +327,7 @@ const response = await fetch('https://example.com/account', {
 console.log(await response.json());
 ```
 
-### Mutate redirect hops
+### mutate redirect hops
 
 ```ts
 await fetch('https://example.com/login', {
@@ -347,7 +347,7 @@ Rule of thumb:
 - use hooks for dynamic behavior
 - use client defaults for static behavior
 
-## <a id="cookies"></a>Cookies and Sessions [↑](#contents)
+## 🍪 <a id="cookies"></a>cookies and sessions   ·   [↑](#contents)
 
 `node-wreq` does not force a built-in cookie store.
 
@@ -364,7 +364,7 @@ That jar can be:
 - DB-backed
 - anything else that matches the interface
 
-### Tiny in-memory jar
+### tiny in-memory jar
 
 ```ts
 import { fetch, websocket } from 'node-wreq';
@@ -426,7 +426,7 @@ await client.fetch('https://example.com/login');
 await client.fetch('https://example.com/profile');
 ```
 
-### Inspect cookies on a response
+### inspect cookies on a response
 
 ```ts
 import { fetch } from 'node-wreq';
@@ -437,11 +437,11 @@ console.log(response.wreq.setCookies);
 console.log(response.wreq.cookies);
 ```
 
-## <a id="redirects-and-retries"></a>Redirects and Retries [↑](#contents)
+## 🔁 <a id="redirects-and-retries"></a>redirects and retries   ·   [↑](#contents)
 
 Both are opt-in controls on top of the normal request pipeline.
 
-### Manual redirects
+### manual redirects
 
 ```ts
 const response = await fetch('https://example.com/login', {
@@ -467,7 +467,7 @@ Useful redirect facts:
 - `307` / `308` preserve method and body
 - `authorization` is stripped on cross-origin redirect
 
-### Simple retries
+### simple retries
 
 ```ts
 const response = await fetch('https://example.com', {
@@ -475,7 +475,7 @@ const response = await fetch('https://example.com', {
 });
 ```
 
-### Explicit retry policy
+### explicit retry policy
 
 ```ts
 const response = await fetch('https://example.com', {
@@ -487,7 +487,7 @@ const response = await fetch('https://example.com', {
 });
 ```
 
-### Custom retry decision
+### custom retry decision
 
 ```ts
 import { TimeoutError, fetch } from 'node-wreq';
@@ -513,14 +513,14 @@ Defaults:
 - default status codes include `408`, `425`, `429`, `500`, `502`, `503`, `504`
 - default error codes include `ECONNRESET`, `ECONNREFUSED`, `ETIMEDOUT`, `ERR_TIMEOUT`
 
-## <a id="observability"></a>Observability [↑](#contents)
+## 📊 <a id="observability"></a>observability   ·   [↑](#contents)
 
 Two main surfaces:
 
 - `response.wreq.timings`
 - `onStats(stats)`
 
-### Per-request stats callback
+### per-request stats callback
 
 ```ts
 await fetch('https://example.com', {
@@ -536,7 +536,7 @@ await fetch('https://example.com', {
 });
 ```
 
-### Read timings from the final response
+### read timings from the final response
 
 ```ts
 const response = await fetch('https://example.com', {
@@ -552,7 +552,7 @@ Current timings are wrapper-level timings that are still useful in practice:
 - response available
 - total time when body consumption is known
 
-## <a id="errors"></a>Error Handling [↑](#contents)
+## 🚨 <a id="errors"></a>error handling   ·   [↑](#contents)
 
 Main error classes:
 
@@ -583,14 +583,14 @@ try {
 }
 ```
 
-## <a id="websockets"></a>WebSockets [↑](#contents)
+## 🔌 <a id="websockets"></a>websockets   ·   [↑](#contents)
 
 You can use either:
 
 - `await websocket(url, init?)`
 - `new WebSocket(url, init?)`
 
-### Simple helper
+### simple helper
 
 ```ts
 import { websocket } from 'node-wreq';
@@ -628,7 +628,7 @@ socket.send(new Uint8Array([1, 2, 3]));
 socket.close(1000, 'done');
 ```
 
-### WebSocket from a client
+### websocket from a client
 
 Useful when you want shared defaults like browser, proxy, or cookies:
 
@@ -646,13 +646,13 @@ Notes:
 - cookies from `cookieJar` are sent during handshake
 - duplicate subprotocols are rejected
 
-## <a id="networking"></a>Networking / Transport Knobs [↑](#contents)
+## 🧪 <a id="networking"></a>networking / transport knobs   ·   [↑](#contents)
 
 This is the "transport nerd" section.
 
 Everything else here is for debugging request shape, fingerprint-sensitive targets, or testing transport hypotheses.
 
-### Browser profile + proxy + timeout
+### browser profile + proxy + timeout
 
 ```ts
 const response = await fetch('https://httpbin.org/anything', {
@@ -662,7 +662,7 @@ const response = await fetch('https://httpbin.org/anything', {
 });
 ```
 
-### Disable default browser-like headers
+### disable default browser-like headers
 
 By default, `node-wreq` may apply profile-appropriate default headers.
 
@@ -678,7 +678,7 @@ await fetch('https://example.com', {
 });
 ```
 
-### Exact header order
+### exact header order
 
 Use tuples when header order matters:
 
@@ -691,7 +691,7 @@ await fetch('https://example.com', {
 });
 ```
 
-### Exact original header names on the wire
+### exact original header names on the wire
 
 Use this only if you really need exact casing / spelling preservation:
 
@@ -706,7 +706,7 @@ await fetch('https://example.com', {
 });
 ```
 
-### Lower-level transport tuning
+### lower-level transport tuning
 
 If a browser preset gets you close but not all the way there:
 
@@ -732,7 +732,7 @@ Use these only when:
 - you are comparing transport behavior
 - you want to debug fingerprint mismatches
 
-### Compression
+### compression
 
 Compression is enabled by default.
 
