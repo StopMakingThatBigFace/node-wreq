@@ -513,7 +513,7 @@ Defaults:
 - default status codes include `408`, `425`, `429`, `500`, `502`, `503`, `504`
 - default error codes include `ECONNRESET`, `ECONNREFUSED`, `ETIMEDOUT`, `ERR_TIMEOUT`
 
-## Observability
+## <a id="observability"></a>Observability [↑](#contents)
 
 Two main surfaces:
 
@@ -552,7 +552,7 @@ Current timings are wrapper-level timings that are still useful in practice:
 - response available
 - total time when body consumption is known
 
-## <a id="errors"></a>Errors [↑](#contents)
+## <a id="errors"></a>Error Handling [↑](#contents)
 
 Main error classes:
 
@@ -646,7 +646,7 @@ Notes:
 - cookies from `cookieJar` are sent during handshake
 - duplicate subprotocols are rejected
 
-## <a id="networkins"></a>Networking / Transport Knobs [↑](#contents)
+## <a id="networking"></a>Networking / Transport Knobs [↑](#contents)
 
 This is the "transport nerd" section.
 
