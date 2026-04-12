@@ -20,14 +20,25 @@ jobs:
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             build: npm run build:rust -- --target x86_64-unknown-linux-gnu
-          - host: ubuntu-latest
+          - host: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            setup: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
-            build: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ npm run build:rust -- --target aarch64-unknown-linux-gnu
+            build: npm run build:rust -- --target aarch64-unknown-linux-gnu
           - host: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            setup: sudo apt-get update && sudo apt-get install -y musl-tools
-            build: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc AR_x86_64_unknown_linux_musl=ar CC_x86_64_unknown_linux_musl=musl-gcc CXX_x86_64_unknown_linux_musl=musl-gcc npm run build:rust -- --target x86_64-unknown-linux-musl
+            setup: |
+              set -eux
+              TOOLCHAIN_URL="https://github.com/troglobit/misc/releases/download/11-20211120/x86_64-linux-musl-cross.tgz"
+              TOOLCHAIN_ROOT="$HOME/musl-cross"
+              TOOLCHAIN_DIR="$TOOLCHAIN_ROOT/x86_64-linux-musl-cross"
+
+              if [ ! -d "$TOOLCHAIN_DIR" ]; then
+                mkdir -p "$TOOLCHAIN_ROOT"
+                curl -L "$TOOLCHAIN_URL" -o /tmp/x86_64-linux-musl-cross.tgz
+                tar -xzf /tmp/x86_64-linux-musl-cross.tgz -C "$TOOLCHAIN_ROOT"
+              fi
+
+              echo "$TOOLCHAIN_DIR/bin" >> "$GITHUB_PATH"
+            build: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc CC_x86_64_unknown_linux_musl=x86_64-linux-musl-gcc CXX_x86_64_unknown_linux_musl=x86_64-linux-musl-g++ AR_x86_64_unknown_linux_musl=x86_64-linux-musl-ar RANLIB_x86_64_unknown_linux_musl=x86_64-linux-musl-ranlib npm run build:rust -- --target x86_64-unknown-linux-musl
           - host: windows-latest
             target: x86_64-pc-windows-msvc
             build: npm run build:rust -- --target x86_64-pc-windows-msvc
