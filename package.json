@@ -37,14 +37,7 @@
     "tls",
     "http2",
     "impersonation",
-    "web-scraping",
-    "crawler",
-    "web-scraper",
-    "wreq",
-    "ja3",
-    "tls-fingerprint", 
-    "ja4", 
-    "browser-fingerprint-bypass"
+    "web-scraping"
   ],
   "author": "StopMakingThatBigFace",
   "license": "MIT",
@@ -67,7 +60,7 @@
     "ws": "^8.18.3"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=18.0.0"
   },
   "os": [
     "darwin",

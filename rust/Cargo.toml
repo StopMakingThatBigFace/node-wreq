@@ -13,9 +13,6 @@ wreq = { version = "6.0.0-rc.28", default-features = false, features = ["gzip", 
 wreq-util = { version = "3.0.0-rc.10", features = ["emulation-rand", "emulation-serde"] }
 strum = "0.27.2"
 
-# WebSocket support
-futures-util = "0.3"
-
 # Neon for Node.js bindings
 neon = { version = "1.0", default-features = false, features = ["napi-6"] }
 
@@ -29,9 +26,6 @@ thiserror = "1.0"
 
 # Async runtime (if needed)
 tokio = { version = "1.0", features = ["full"] }
-
-# Global state management
-once_cell = "1.20"
 
 [profile.release]
 opt-level = 3
