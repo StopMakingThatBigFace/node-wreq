@@ -3,6 +3,9 @@ node_modules/
 
 # Build outputs
 dist/
+.release/
+.release-stubs/
+.tmp-release/
 rust/target/
 rust/node-wreq.node
 *.node

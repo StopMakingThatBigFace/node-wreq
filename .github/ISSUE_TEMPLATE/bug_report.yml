@@ -31,10 +31,9 @@ body:
       description: Minimal code to reproduce the issue
       render: typescript
       placeholder: |
-        import { request } from 'node-wreq';
+        import { fetch } from 'node-wreq';
 
-        const response = await request({
-          url: 'https://example.com',
+        const response = await fetch('https://example.com', {
           browser: 'chrome_131'
         });
     validations:

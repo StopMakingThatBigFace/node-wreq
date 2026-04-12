@@ -1,149 +1,177 @@
-import { test, describe, before } from 'node:test';
 import assert from 'node:assert';
-import { setTimeout as sleep } from 'node:timers/promises';
-import { websocket } from '../node-wreq';
+import { Buffer } from 'node:buffer';
+import { describe, test } from 'node:test';
+import { CloseEvent as WreqCloseEvent, WebSocket as WreqWebSocket, websocket } from '../node-wreq';
+import { onceEvent, setupLocalTestServer } from './helpers/local-server';
 
-describe('WebSocket', () => {
-  before(() => {
-    console.log('🔌 WebSocket Test Suite\n');
-  });
+describe('websocket', () => {
+  const { getBaseUrl } = setupLocalTestServer();
 
-  test('should connect to WebSocket and send/receive messages', async () => {
-    const messages: (string | Buffer)[] = [];
-    let isClosed = false;
-
-    const ws = await websocket({
-      url: 'wss://echo.websocket.org',
-      browser: 'chrome_137',
-      onMessage: (data) => {
-        messages.push(data);
-      },
-      onClose: () => {
-        isClosed = true;
-      },
-      onError: (error) => {
-        console.error('WebSocket error:', error);
-      },
+  test('should expose a WHATWG-like websocket helper and lifecycle', async () => {
+    const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      protocols: 'chat',
     });
 
-    console.log('WebSocket connected');
+    assert.strictEqual(socket.readyState, WreqWebSocket.OPEN);
+    assert.strictEqual(socket.protocol, 'chat');
 
-    await ws.send('Hello!');
+    const connectedEvent = await onceEvent<MessageEvent>(socket, 'message');
+    const connected = JSON.parse(String(connectedEvent.data)) as {
+      kind: string;
+      cookie: string;
+      protocol: string;
+    };
 
-    // Wait for echo response
-    await sleep(1000);
-    assert.ok(messages.length > 0, 'Should receive at least one message');
+    assert.strictEqual(connected.kind, 'connected');
+    assert.strictEqual(connected.protocol, 'chat');
 
-    // Wait a bit for close callback
-    await ws.close();
-    await sleep(500);
-    assert.ok(isClosed, 'Should receive close event');
+    const replyPromise = onceEvent<MessageEvent>(socket, 'message');
 
-    // Rate limit protection: wait before next test
-    await sleep(2000);
+    socket.send('hello');
+    const replyEvent = await replyPromise;
+
+    assert.strictEqual(replyEvent.data, 'hello');
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000, 'done');
+    const closeEvent = await closePromise;
+
+    assert.strictEqual(closeEvent.code, 1000);
+    assert.strictEqual(closeEvent.reason, 'done');
+    assert.strictEqual(closeEvent.wasClean, true);
+    assert.strictEqual(socket.readyState, WreqWebSocket.CLOSED);
   });
 
-  test('should handle parallel sends on same WebSocket', async () => {
-    const messages: (string | Buffer)[] = [];
-    const expectedMessages = ['Message 1', 'Message 2', 'Message 3', 'Message 4', 'Message 5'];
-
-    const ws = await websocket({
-      url: 'wss://echo.websocket.org',
-      browser: 'chrome_137',
-      onMessage: (data) => {
-        messages.push(data);
-      },
-      onClose: () => {},
-      onError: (error) => {
-        console.error('WebSocket error:', error);
-      },
+  test('should support binary messages and arraybuffer binaryType', async () => {
+    const socket = new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      binaryType: 'arraybuffer',
     });
 
-    console.log('Testing parallel sends...');
+    await onceEvent<Event>(socket, 'open');
+    await onceEvent<MessageEvent>(socket, 'message');
 
-    // Send multiple messages in parallel
-    await Promise.all([
-      ws.send('Message 1'),
-      ws.send('Message 2'),
-      ws.send('Message 3'),
-      ws.send('Message 4'),
-      ws.send('Message 5'),
-    ]);
+    const replyPromise = onceEvent<MessageEvent>(socket, 'message');
 
-    console.log('All messages sent in parallel');
+    socket.send(new Uint8Array([1, 2, 3]));
+    const replyEvent = await replyPromise;
 
-    // Wait for echo responses
-    await sleep(2000);
+    assert.ok(replyEvent.data instanceof ArrayBuffer);
+    assert.deepStrictEqual([...new Uint8Array(replyEvent.data)], [1, 2, 3]);
 
-    assert.ok(messages.length >= 5, 'Should receive at least 5 messages');
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
-    // Verify that all expected messages were received (order may vary)
-    const receivedStrings = messages.map((m) => (Buffer.isBuffer(m) ? m.toString() : m));
-
-    for (const expected of expectedMessages) {
-      assert.ok(
-        receivedStrings.includes(expected),
-        `Should receive message: "${expected}". Got: ${receivedStrings.join(', ')}`
-      );
-    }
-    console.log('All messages received correctly:', receivedStrings.join(', '));
-
-    await ws.close();
-
-    // Rate limit protection: wait before next test
-    await sleep(2000);
+    socket.close(1000, 'done');
+    await closePromise;
   });
 
-  test('should handle multiple WebSocket connections simultaneously', async () => {
-    const ws1Messages: (string | Buffer)[] = [];
-    const ws2Messages: (string | Buffer)[] = [];
+  test('should send cookieJar cookies during websocket handshake', async () => {
+    const cookieJar = {
+      getCookies: () => [{ name: 'session', value: 'ws123' }],
+      setCookie: () => {},
+    };
 
-    // Create two WebSocket connections in parallel
-    const [ws1, ws2] = await Promise.all([
-      websocket({
-        url: 'wss://echo.websocket.org',
-        browser: 'chrome_137',
-        onMessage: (data) => ws1Messages.push(data),
-        onClose: () => {},
-        onError: () => {},
-      }),
-      websocket({
-        url: 'wss://echo.websocket.org',
-        browser: 'firefox_139',
-        onMessage: (data) => ws2Messages.push(data),
-        onClose: () => {},
-        onError: () => {},
-      }),
-    ]);
+    const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      cookieJar,
+    });
 
-    console.log('WebSocket connections created');
+    const connectedEvent = await onceEvent<MessageEvent>(socket, 'message');
+    const connected = JSON.parse(String(connectedEvent.data)) as { cookie: string };
 
-    // Send unique messages on both connections in parallel
-    await Promise.all([ws1.send('From WS1'), ws2.send('From WS2')]);
+    assert.ok(
+      connected.cookie.includes('session=ws123'),
+      'cookieJar cookies should be sent during the websocket handshake'
+    );
 
-    // Wait for responses
-    await sleep(1500);
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
-    assert.ok(ws1Messages.length > 0, 'WS1 should receive messages');
-    assert.ok(ws2Messages.length > 0, 'WS2 should receive messages');
+    socket.close(1000, 'done');
+    await closePromise;
+  });
 
-    // Verify that each connection received the correct message (not mixed up)
-    // Note: echo.websocket.org sends a "Request served by..." message first, then echoes
-    const ws1Strings = ws1Messages.map((m) => (Buffer.isBuffer(m) ? m.toString() : m));
-    const ws2Strings = ws2Messages.map((m) => (Buffer.isBuffer(m) ? m.toString() : m));
+  test('should reject websocket URLs with fragments', () => {
+    assert.throws(
+      () => {
+        new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws#fragment');
+      },
+      (error: unknown) => error instanceof DOMException && error.name === 'SyntaxError',
+      'fragment websocket URLs should be rejected'
+    );
+  });
 
-    assert.ok(ws1Strings.includes('From WS1'), 'WS1 should receive its own message');
-    assert.ok(ws2Strings.includes('From WS2'), 'WS2 should receive its own message');
+  test('should reject forbidden websocket headers and duplicate protocols', () => {
+    assert.throws(
+      () => {
+        new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+          headers: {
+            Upgrade: 'websocket',
+          },
+        });
+      },
+      (error: unknown) => error instanceof DOMException && error.name === 'SyntaxError',
+      'forbidden managed websocket headers should be rejected'
+    );
 
-    // Verify messages are not mixed up between connections
-    assert.ok(!ws1Strings.includes('From WS2'), 'WS1 should NOT receive WS2 message');
-    assert.ok(!ws2Strings.includes('From WS1'), 'WS2 should NOT receive WS1 message');
+    assert.throws(
+      () => {
+        new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+          protocols: ['chat', 'chat'],
+        });
+      },
+      (error: unknown) =>
+        error instanceof SyntaxError && error.message.includes('Duplicate WebSocket subprotocol'),
+      'duplicate websocket subprotocols should be rejected'
+    );
+  });
 
-    console.log('Messages correctly isolated between connections:');
-    console.log('  WS1:', ws1Strings);
-    console.log('  WS2:', ws2Strings);
+  test('should expose negotiated websocket extensions as a string', async () => {
+    const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws');
 
-    // Close both connections
-    await Promise.all([ws1.close(), ws2.close()]);
+    assert.strictEqual(typeof socket.extensions, 'string');
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000, 'done');
+    await closePromise;
+  });
+
+  test('should preserve handshake header names and expose bufferedAmount', async () => {
+    const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      browser: 'chrome_137',
+      disableDefaultHeaders: true,
+      keepOriginalHeaderNames: true,
+      headers: [
+        ['x-lower', 'one'],
+        ['X-Mixed', 'two'],
+      ],
+    });
+
+    const connectedEvent = await onceEvent<MessageEvent>(socket, 'message');
+    const payload = JSON.parse(String(connectedEvent.data)) as { rawHeaders: string[] };
+    const lowerIndex = payload.rawHeaders.indexOf('x-lower');
+    const mixedIndex = payload.rawHeaders.indexOf('X-Mixed');
+
+    assert.ok(lowerIndex >= 0, 'handshake should preserve lowercase header name');
+    assert.ok(mixedIndex >= 0, 'handshake should preserve mixed-case header name');
+    assert.ok(lowerIndex < mixedIndex, 'handshake tuple order should be preserved');
+
+    const largePayload = 'x'.repeat(256 * 1024);
+
+    socket.send(largePayload);
+    assert.ok(
+      socket.bufferedAmount >= Buffer.byteLength(largePayload),
+      'bufferedAmount should reflect queued outgoing bytes'
+    );
+
+    await onceEvent<MessageEvent>(socket, 'message');
+    await new Promise((resolve) => {
+      setTimeout(resolve, 25);
+    });
+    assert.strictEqual(socket.bufferedAmount, 0, 'bufferedAmount should drain after send');
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000, 'done');
+    await closePromise;
   });
 });

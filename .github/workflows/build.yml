@@ -20,6 +20,25 @@ jobs:
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             build: npm run build:rust -- --target x86_64-unknown-linux-gnu
+          - host: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            build: npm run build:rust -- --target aarch64-unknown-linux-gnu
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            setup: |
+              set -eux
+              TOOLCHAIN_URL="https://github.com/troglobit/misc/releases/download/11-20211120/x86_64-linux-musl-cross.tgz"
+              TOOLCHAIN_ROOT="$HOME/musl-cross"
+              TOOLCHAIN_DIR="$TOOLCHAIN_ROOT/x86_64-linux-musl-cross"
+
+              if [ ! -d "$TOOLCHAIN_DIR" ]; then
+                mkdir -p "$TOOLCHAIN_ROOT"
+                curl -L "$TOOLCHAIN_URL" -o /tmp/x86_64-linux-musl-cross.tgz
+                tar -xzf /tmp/x86_64-linux-musl-cross.tgz -C "$TOOLCHAIN_ROOT"
+              fi
+
+              echo "$TOOLCHAIN_DIR/bin" >> "$GITHUB_PATH"
+            build: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc CC_x86_64_unknown_linux_musl=x86_64-linux-musl-gcc CXX_x86_64_unknown_linux_musl=x86_64-linux-musl-g++ AR_x86_64_unknown_linux_musl=x86_64-linux-musl-ar RANLIB_x86_64_unknown_linux_musl=x86_64-linux-musl-ranlib npm run build:rust -- --target x86_64-unknown-linux-musl
           - host: windows-latest
             target: x86_64-pc-windows-msvc
             build: npm run build:rust -- --target x86_64-pc-windows-msvc
@@ -40,6 +59,10 @@ jobs:
         with:
           targets: ${{ matrix.settings.target }}
 
+      - name: Install target toolchain dependencies
+        if: matrix.settings.setup != ''
+        run: ${{ matrix.settings.setup }}
+
       - name: Install dependencies
         run: npm install
 
@@ -54,9 +77,84 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish to npm
+    name: Publish platform package - ${{ matrix.settings.target }}
     runs-on: ubuntu-latest
     needs: build
+    if: github.event_name == 'release'
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - target: x86_64-apple-darwin
+          - target: aarch64-apple-darwin
+          - target: x86_64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
+          - target: x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Determine npm dist-tag
+        id: dist_tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+            echo "value=rc" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine publish version
+        id: publish_version
+        shell: bash
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+
+          if [[ -z "$version" ]]; then
+            echo "Release tag produced an empty version" >&2
+            exit 1
+          fi
+
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-${{ matrix.settings.target }}
+          path: artifacts
+
+      - name: Prepare scoped platform package
+        shell: bash
+        env:
+          NODE_WREQ_PUBLISH_VERSION: ${{ steps.publish_version.outputs.value }}
+        run: |
+          BINARY_PATH="$(find artifacts -name '*.node' | head -n 1)"
+          node ./scripts/prepare-platform-package.mjs \
+            --target "${{ matrix.settings.target }}" \
+            --binary "$BINARY_PATH" \
+            --outDir ".release/${{ matrix.settings.target }}"
+
+      - name: Publish scoped platform package
+        run: npm publish ".release/${{ matrix.settings.target }}" --access public --tag "${{ steps.dist_tag.outputs.value }}"
+
+  publish-main:
+    name: Publish main package
+    runs-on: ubuntu-latest
+    needs: publish
     if: github.event_name == 'release'
     permissions:
       contents: read
@@ -68,30 +166,43 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Determine npm dist-tag
+        id: dist_tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+            echo "value=rc" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine publish version
+        id: publish_version
+        shell: bash
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+
+          if [[ -z "$version" ]]; then
+            echo "Release tag produced an empty version" >&2
+            exit 1
+          fi
+
+          echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Move artifacts to rust directory
-        shell: bash
-        run: |
-          mkdir -p rust
-          # Copy all .node files from artifacts to rust/
-          find artifacts -name "*.node" -exec cp {} rust/ \;
-          echo "Collected binaries:"
-          ls -la rust/*.node
-
       - name: Build TypeScript
         run: npm run build:ts
 
-      - name: Publish to npm
-        run: npm publish --provenance --access public
+      - name: Prepare main npm package
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_WREQ_PUBLISH_VERSION: ${{ steps.publish_version.outputs.value }}
+        run: npm run prepare:publish:main -- .release/main-package
+
+      - name: Publish main package
+        run: npm publish .release/main-package --access public --tag "${{ steps.dist_tag.outputs.value }}"

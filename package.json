@@ -1,56 +1,81 @@
 {
   "name": "node-wreq",
-  "version": "0.2.0",
-  "description": "Browser fingerprint bypass library using Rust for TLS/HTTP2 impersonation",
-  "main": "dist/node-wreq.js",
+  "version": "0.0.0-reserved.0",
+  "description": "HTTP client with native TLS, HTTP2, JA3, JA4 browser impersonation backed by wreq's Rust core",
+  "main": "./dist/node-wreq.js",
+  "module": "./dist/node-wreq.mjs",
   "types": "dist/node-wreq.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/node-wreq.d.ts",
+      "require": "./dist/node-wreq.js",
+      "import": "./dist/node-wreq.mjs",
+      "default": "./dist/node-wreq.js"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "npm run build:rust && npm run build:ts",
     "build:rust": "napi build --platform --release --cargo-cwd rust rust",
-    "build:ts": "npm run clean:dist && tsc",
-    "clean:dist": "rimraf dist",
+    "build:ts": "node ./scripts/generate-browser-profiles.mjs && tsc && node ./scripts/postbuild.mjs",
+    "prepare": "node ./scripts/install-git-hooks.mjs",
+    "prepare:publish:main": "node ./scripts/prepare-main-package.mjs",
+    "prepare:publish:platform": "node ./scripts/prepare-platform-package.mjs",
     "artifacts": "napi artifacts",
-    "clean": "rimraf dist rust/target rust/*.node",
-    "test": "npm run build && node --test dist/test/*.spec.js",
-    "format": "prettier --write \"src/**/*.{ts,js,json,md}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\""
+    "clean": "rm -rf dist rust/target rust/*.node",
+    "test": "npm run build && node --test dist/test/node-wreq.spec.js",
+    "lint": "oxlint --deny-warnings src",
+    "lint:fix": "oxlint --fix src",
+    "format": "oxfmt --write \"src/**/*.ts\"",
+    "format:check": "oxfmt --check \"src/**/*.ts\""
   },
   "keywords": [
-    "browser",
-    "fingerprint",
-    "bypass",
     "anti-bot",
+    "bypass",
+    "browser",
+    "browser-fingerprint-bypass",
+    "browseer-impersonation",
+    "browser-emulation",
+    "crawler",
+    "cloudflare",
+    "cloudflare-bypass",
+    "curl-impersonate",
+    "scrapper",
+    "fingerprint",
     "tls",
+    "tls-fingerprint", 
     "http2",
+    "fetch",
+    "websocket",
     "impersonation",
     "web-scraping",
-    "crawler",
     "web-scraper",
     "wreq",
     "ja3",
-    "tls-fingerprint", 
-    "ja4", 
-    "browser-fingerprint-bypass"
+    "ja4"
   ],
-  "author": "will-work-for-meal",
+  "author": "StopMakingThatBigFace",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/will-work-for-meal/node-wreq.git"
+    "url": "git+https://github.com/StopMakingThatBigFace/node-wreq.git"
   },
   "bugs": {
-    "url": "https://github.com/will-work-for-meal/node-wreq/issues"
+    "url": "https://github.com/StopMakingThatBigFace/node-wreq/issues"
   },
-  "homepage": "https://github.com/will-work-for-meal/node-wreq#readme",
+  "homepage": "https://github.com/StopMakingThatBigFace/node-wreq#readme",
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^20.0.0",
-    "prettier": "^3.2.5",
-    "rimraf": "^6.0.1",
-    "typescript": "^5.0.0"
+    "@types/ws": "^8.18.1",
+    "oxfmt": "^0.41.0",
+    "oxlint": "^1.56.0",
+    "typescript": "^5.0.0",
+    "ws": "^8.18.3"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=18.0.0"
   },
   "os": [
     "darwin",
@@ -73,6 +98,8 @@
         "x86_64-apple-darwin",
         "aarch64-apple-darwin",
         "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
         "x86_64-pc-windows-msvc"
       ]
     }
