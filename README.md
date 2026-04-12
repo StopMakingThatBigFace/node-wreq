@@ -1,8 +1,32 @@
 # node-wreq
 
-`node-wreq` is a Node HTTP client with a Rust transport underneath backed by [`wreq`](https://github.com/0x676e67/wreq).
+[![NPM Version](https://img.shields.io/npm/v/node-wreq)](https://npmjs.com/package/node-wreq)
+![ESM](https://img.shields.io/badge/ESM-supported-brightgreen)
+![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20windows-lightgrey)
 
-This package helps if you need low-level control over the network layer — TLS configuration, transport fingerprinting, browser impersonation, or fine-grained HTTP/WebSocket behavior that standard Node.js clients don't expose.
+`node-wreq` is a thin Node.js wrapper around 0x676e67's [`wreq`](https://github.com/0x676e67/wreq) — 
+a Rust HTTP client exposing its full power to JavaScript.
+
+Use it when you need low-level control over the network layer: TLS configuration, 
+transport fingerprinting, browser impersonation, or fine-grained HTTP/WebSocket 
+behavior that standard Node.js clients simply don't expose.
+
+> [!TIP]
+> ### why does this exist?
+>
+> Node.js ships with a built-in `https` module, and the ecosystem offers popular clients like `axios`, `got`, and `node-fetch` — but all of them are built on top of OpenSSL via Node's `tls` module, which exposes **no control over low-level TLS handshake parameters**. This makes it fundamentally impossible to emulate real browser network behavior from pure JavaScript.
+>
+> - **HTTP/1 over TLS**
+>
+>   Node.js HTTP clients normalize headers to lowercase internally, which is compliant with HTTP/2 semantics but breaks compatibility with some **WAFs** that enforce case-sensitive header validation on **HTTP/1** requests. This wrapper preserves header case exactly as specified, preventing requests from being silently rejected.
+>
+> - **HTTP/2 over TLS**
+>
+>   Fingerprints like **JA3**, **JA4**, and **Akamai HTTP/2** are derived from the specifics of the TLS handshake and HTTP/2 SETTINGS frames — cipher suite ordering, TLS extensions, ALPN values, HPACK header compression parameters, and more. Node.js exposes none of these through its `tls` or `http2` APIs. You simply cannot spoof them from JS land, no matter the library. This package solves that at the native layer, giving you fine-grained control over TLS and HTTP/2 extensions to precisely match real browser behavior.
+>
+> - **Device Emulation**
+>
+>   Because TLS and HTTP/2 fingerprints evolve slowly relative to browser release cycles, a single fingerprint profile often covers many browser versions. **100+ pre-built browser device profiles** are bundled, so you don't have to figure out the right combination of settings yourself.
 
 ## install
 
@@ -24,7 +48,7 @@ npm install node-wreq
 #### 🔌   **[websockets](#websockets)**
 #### 🧪   **[networking / transport knobs](#networking)** — TLS, HTTP/1, HTTP/2 options; header ordering.
 
-## ⚡ <a id="quick-start"></a>quick start   ·   [↑](#contents)
+## ⚡ <a id="quick-start"></a>quick start
 
 ```ts
 import { fetch } from 'node-wreq';
