@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getOptionalDependencyMap } from "./platform-targets.mjs";
+import { resolvePublishVersion } from "./publish-version.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -10,6 +11,7 @@ const outDir = resolve(repoRoot, process.argv[2] ?? ".release/main-package");
 const rootPackage = JSON.parse(
   await readFile(resolve(repoRoot, "package.json"), "utf8"),
 );
+const publishVersion = resolvePublishVersion(rootPackage);
 
 await rm(outDir, { recursive: true, force: true });
 
@@ -29,7 +31,7 @@ await cp(resolve(repoRoot, "README.md"), resolve(outDir, "README.md"));
 
 const publishPackage = {
   name: rootPackage.name,
-  version: rootPackage.version,
+  version: publishVersion,
   description: rootPackage.description,
   main: rootPackage.main,
   module: rootPackage.module,
@@ -44,7 +46,7 @@ const publishPackage = {
   engines: rootPackage.engines,
   os: rootPackage.os,
   cpu: rootPackage.cpu,
-  optionalDependencies: getOptionalDependencyMap(rootPackage.version),
+  optionalDependencies: getOptionalDependencyMap(publishVersion),
   files: ["dist", "docs", "README.md"],
 };
 

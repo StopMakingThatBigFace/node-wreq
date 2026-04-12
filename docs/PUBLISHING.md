@@ -7,6 +7,10 @@ Publishing is split into two layers:
 - scoped platform packages with the native `.node` binaries
 - the main `node-wreq` package with JS, types, loader logic, and `optionalDependencies`
 
+The publish version can be overridden at staging time with `NODE_WREQ_PUBLISH_VERSION`.
+That lets CI publish from the GitHub release tag even if the repository's root `package.json`
+stays on a placeholder or development version locally.
+
 ### Package Structure
 
 When published, the package includes:
@@ -31,9 +35,9 @@ Scoped package names:
 
 #### 1. Prerequisites
 
-- npm account with publish permissions
+- npm account with package publish permissions
 - GitHub repository set up
-- `NPM_TOKEN` configured in GitHub Secrets
+- npm trusted publishing configured for each package you publish from this workflow
 
 #### 1. Update Version
 
@@ -66,6 +70,19 @@ GitHub Actions will automatically:
 4. Stage the main package with generated `optionalDependencies`
 5. Publish the main package to npm
 
+Workflow requirements for trusted publishing:
+
+- the trusted publisher must point at this repository and the exact workflow filename: `.github/workflows/build.yml`
+- publish jobs must run on GitHub-hosted runners
+- publish jobs need `permissions.id-token: write`
+- no `NPM_TOKEN` is required for the `npm publish` steps
+
+Release tag behavior:
+
+- prereleases publish with npm dist-tag `rc`
+- stable releases publish with npm dist-tag `latest`
+- the published package version is derived from the GitHub release tag, for example `v1.0.0-rc2` -> `1.0.0-rc2`
+
 ### Local Testing Before Publishing
 
 ```bash
@@ -91,7 +108,7 @@ If you really need to publish a scoped platform package manually:
 npm run build:rust -- --target x86_64-unknown-linux-musl
 
 # Stage the scoped package
-node ./scripts/prepare-platform-package.mjs \
+NODE_WREQ_PUBLISH_VERSION=1.0.0-rc2 node ./scripts/prepare-platform-package.mjs \
   --target x86_64-unknown-linux-musl \
   --binary rust/node-wreq.linux-x64-musl.node \
   --outDir .release/linux-x64-musl
@@ -106,7 +123,7 @@ After the platform packages for the same version exist:
 
 ```bash
 npm run build:ts
-npm run prepare:publish:main -- .release/main-package
+NODE_WREQ_PUBLISH_VERSION=1.0.0-rc2 npm run prepare:publish:main -- .release/main-package
 npm publish .release/main-package --access public
 ```
 

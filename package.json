@@ -1,6 +1,6 @@
 {
   "name": "node-wreq",
-  "version": "0.1.2",
+  "version": "0.0.0-reserved.0",
   "description": "Node HTTP client with native browser impersonation, hooks, cookies, redirects, websockets, and timing stats",
   "main": "./dist/node-wreq.js",
   "module": "./dist/node-wreq.mjs",

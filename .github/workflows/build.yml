@@ -90,8 +90,32 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Determine npm dist-tag
+        id: dist_tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+            echo "value=rc" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine publish version
+        id: publish_version
+        shell: bash
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+
+          if [[ -z "$version" ]]; then
+            echo "Release tag produced an empty version" >&2
+            exit 1
+          fi
+
+          echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: npm ci
@@ -104,6 +128,8 @@ jobs:
 
       - name: Prepare scoped platform package
         shell: bash
+        env:
+          NODE_WREQ_PUBLISH_VERSION: ${{ steps.publish_version.outputs.value }}
         run: |
           BINARY_PATH="$(find artifacts -name '*.node' | head -n 1)"
           node ./scripts/prepare-platform-package.mjs \
@@ -112,9 +138,7 @@ jobs:
             --outDir ".release/${{ matrix.settings.target }}"
 
       - name: Publish scoped platform package
-        run: npm publish ".release/${{ matrix.settings.target }}" --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish ".release/${{ matrix.settings.target }}" --access public --tag "${{ steps.dist_tag.outputs.value }}"
 
   publish-main:
     name: Publish main package
@@ -131,8 +155,32 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Determine npm dist-tag
+        id: dist_tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+            echo "value=rc" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine publish version
+        id: publish_version
+        shell: bash
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+
+          if [[ -z "$version" ]]; then
+            echo "Release tag produced an empty version" >&2
+            exit 1
+          fi
+
+          echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: npm ci
@@ -141,9 +189,9 @@ jobs:
         run: npm run build:ts
 
       - name: Prepare main npm package
+        env:
+          NODE_WREQ_PUBLISH_VERSION: ${{ steps.publish_version.outputs.value }}
         run: npm run prepare:publish:main -- .release/main-package
 
       - name: Publish main package
-        run: npm publish .release/main-package --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish .release/main-package --access public --tag "${{ steps.dist_tag.outputs.value }}"

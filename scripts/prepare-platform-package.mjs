@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPlatformTargetByTriple } from "./platform-targets.mjs";
+import { resolvePublishVersion } from "./publish-version.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -42,6 +43,7 @@ if (!args.outDir) {
 const rootPackage = JSON.parse(
   await readFile(resolve(repoRoot, "package.json"), "utf8"),
 );
+const publishVersion = resolvePublishVersion(rootPackage);
 const outDir = resolve(repoRoot, args.outDir);
 const binarySource = resolve(repoRoot, args.binary);
 
@@ -51,7 +53,7 @@ await cp(binarySource, resolve(outDir, target.binaryName));
 
 const packageJson = {
   name: target.packageName,
-  version: rootPackage.version,
+  version: publishVersion,
   description: `Prebuilt native binding for ${rootPackage.name} on ${target.target}`,
   license: rootPackage.license,
   author: rootPackage.author,
