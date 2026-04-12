@@ -12,19 +12,19 @@ npm install node-wreq
 
 ## Contents
 
-⚡ **[Quick Start](#quick-start)**\
-🌐 **[Fetch](#fetch)**\
-🧩 **[Client](#client)** — shared defaults, reusable config.\
-🎭 **[Browser Profiles](#browser-profiles)**\
-🪝 **[Hooks](#hooks)** — request lifecycle, dynamic auth, retries, etc.\
-🍪 **[Cookies and Sessions](#cookie-jar)**\
-🔁 **[Redirects and Retries](#redirects-and-retries)**\
-📊 **[Observability](#observability)**\
-🚨 **[Error Handling](#errors)**\
-🔌 **[WebSockets](#websockets)**\
-🧪 **[Networking / Transport Knobs](#networking--transport-knobs)** — TLS, HTTP/1, HTTP/2 options; header ordering.
+#### ⚡   **[Quick Start](#quick-start)**
+#### 🌐   **[Fetch](#fetch)**
+#### 🧩   **[Client](#client)** — shared defaults, reusable config.
+#### 🎭   **[Browser Profiles](#browser-profiles)**
+#### 🪝   **[Hooks](#hooks)** — request lifecycle, dynamic auth, retries, etc.
+#### 🍪   **[Cookies and Sessions](#cookies)**
+#### 🔁   **[Redirects and Retries](#redirects-and-retries)**
+#### 📊   **[Observability](#observability)**
+#### 🚨   **[Error Handling](#errors)**
+#### 🔌   **[WebSockets](#websockets)**
+#### 🧪   **[Networking / Transport Knobs](#networking)** — TLS, HTTP/1, HTTP/2 options; header ordering.
 
-## Quick Start
+## <a id="quick-start"></a>Quick Start [↑](#contents)
 
 ```ts
 import { fetch } from 'node-wreq';
@@ -59,7 +59,7 @@ console.log(response.status);
 console.log(await response.json());
 ```
 
-## Fetch
+## <a id="fetch"></a>Fetch [↑](#contents)
 
 ### Simple GET
 
@@ -148,7 +148,7 @@ const readable = response.wreq.readable();
 readable.pipe(process.stdout);
 ```
 
-## Client
+## <a id="client"></a>Client [↑](#contents)
 
 Use `createClient(...)` when requests share defaults:
 
@@ -214,7 +214,7 @@ await base.get('/health');
 await admin.get('/admin/stats');
 ```
 
-## Browser Profiles
+## <a id="browser-profiles"></a>Browser Profiles [↑](#contents)
 
 Inspect the available profiles at runtime:
 
@@ -235,7 +235,7 @@ Typical profiles include browser families like:
 - Opera
 - OkHttp
 
-## Hooks
+## <a id="hooks"></a>Hooks [↑](#contents)
 
 Hooks are the request pipeline.
 
@@ -347,7 +347,7 @@ Rule of thumb:
 - use hooks for dynamic behavior
 - use client defaults for static behavior
 
-## Cookie Jar
+## <a id="cookies"></a>Cookies and Sessions [↑](#contents)
 
 `node-wreq` does not force a built-in cookie store.
 
@@ -437,7 +437,7 @@ console.log(response.wreq.setCookies);
 console.log(response.wreq.cookies);
 ```
 
-## Redirects and Retries
+## <a id="redirects-and-retries"></a>Redirects and Retries [↑](#contents)
 
 Both are opt-in controls on top of the normal request pipeline.
 
@@ -552,7 +552,7 @@ Current timings are wrapper-level timings that are still useful in practice:
 - response available
 - total time when body consumption is known
 
-## Errors
+## <a id="errors"></a>Errors [↑](#contents)
 
 Main error classes:
 
@@ -583,7 +583,7 @@ try {
 }
 ```
 
-## WebSockets
+## <a id="websockets"></a>WebSockets [↑](#contents)
 
 You can use either:
 
@@ -646,7 +646,7 @@ Notes:
 - cookies from `cookieJar` are sent during handshake
 - duplicate subprotocols are rejected
 
-## Networking / Transport Knobs
+## <a id="networkins"></a>Networking / Transport Knobs [↑](#contents)
 
 This is the "transport nerd" section.
 
