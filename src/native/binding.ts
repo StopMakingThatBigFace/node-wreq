@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import type {
   NativeRequestOptions,
   NativeResponse,
@@ -32,6 +33,14 @@ type NativeTarget = {
 };
 
 let nativeBinding: NativeBinding | undefined;
+
+function tryRequire<T>(id: string): T | undefined {
+  try {
+    return require(id) as T;
+  } catch {
+    return undefined;
+  }
+}
 
 function isMuslRuntime(): boolean {
   if (process.platform !== 'linux') {
@@ -111,28 +120,37 @@ function loadNativeBinding(): NativeBinding {
   }
 
   const attempted: string[] = [target.packageName];
+  const packageBinding = tryRequire<NativeBinding>(target.packageName);
 
-  try {
-    return require(target.packageName) as NativeBinding;
-  } catch {
-    attempted.push(`../rust/${target.binaryName}`);
+  if (packageBinding) {
+    return packageBinding;
   }
 
-  try {
-    return require(`../rust/${target.binaryName}`) as NativeBinding;
-  } catch {
-    attempted.push('../rust/node-wreq.node');
+  const localBinaryPath = resolve(__dirname, '../../rust', target.binaryName);
+
+  attempted.push(localBinaryPath);
+
+  const localPlatformBinding = tryRequire<NativeBinding>(localBinaryPath);
+
+  if (localPlatformBinding) {
+    return localPlatformBinding;
   }
 
-  try {
-    return require('../rust/node-wreq.node') as NativeBinding;
-  } catch {
-    throw new Error(
-      `Failed to load native module for ${platform}-${arch}. ` +
-        `Tried: ${attempted.join(', ')}. ` +
-        `Make sure the matching @node-wreq platform package is installed or build the local native module.`
-    );
+  const localGenericBinaryPath = resolve(__dirname, '../../rust/node-wreq.node');
+
+  attempted.push(localGenericBinaryPath);
+
+  const localGenericBinding = tryRequire<NativeBinding>(localGenericBinaryPath);
+
+  if (localGenericBinding) {
+    return localGenericBinding;
   }
+
+  throw new Error(
+    `Failed to load native module for ${platform}-${arch}. ` +
+      `Tried: ${attempted.join(', ')}. ` +
+      `Make sure the matching @node-wreq platform package is installed or build the local native module.`
+  );
 }
 
 export function getBinding(): NativeBinding {
