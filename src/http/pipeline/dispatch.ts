@@ -44,6 +44,7 @@ export async function dispatchNativeRequest(
     bodyHandle: nativeResponse.bodyHandle,
     cookies: nativeResponse.cookies,
     setCookies: nativeResponse.setCookies,
+    tls: nativeResponse.tls,
     url: nativeResponse.url,
     timings: {
       startTime,

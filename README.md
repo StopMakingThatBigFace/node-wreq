@@ -848,6 +848,34 @@ await fetch('https://mtls.example.com', {
 });
 ```
 
+For TLS diagnostics, you can ask for peer certificate metadata on the response or write TLS session keys to a file for tools like Wireshark:
+
+```ts
+const response = await fetch('https://mtls.example.com', {
+  tlsDebug: {
+    peerCertificates: true,
+    keylog: {
+      path: '/tmp/node-wreq.keys',
+    },
+  },
+});
+
+console.log(response.wreq.tls?.peerCertificate);
+console.log(response.wreq.tls?.peerCertificateChain);
+```
+
+Unsafe TLS overrides are separate and explicit:
+
+```ts
+await fetch('https://staging.internal.example', {
+  tlsDanger: {
+    certVerification: false,
+    verifyHostname: false,
+    sni: false,
+  },
+});
+```
+
 ### compression
 
 Compression is enabled by default.

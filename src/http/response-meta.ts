@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import type { RequestTimings, RedirectEntry, WreqResponseMeta } from '../types';
+import type { RequestTimings, RedirectEntry, TlsPeerInfo, WreqResponseMeta } from '../types';
 import type { Response } from './response';
 
 export class ResponseMeta implements WreqResponseMeta {
@@ -31,6 +31,19 @@ export class ResponseMeta implements WreqResponseMeta {
     const parsed = Number(value);
 
     return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  get tls(): TlsPeerInfo | undefined {
+    return this.response._tls
+      ? {
+          peerCertificate: this.response._tls.peerCertificate
+            ? Buffer.from(this.response._tls.peerCertificate)
+            : undefined,
+          peerCertificateChain: this.response._tls.peerCertificateChain?.map((cert) =>
+            Buffer.from(cert)
+          ),
+        }
+      : undefined;
   }
 
   readable(): Readable {

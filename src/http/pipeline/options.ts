@@ -1,7 +1,16 @@
 import { Buffer } from 'node:buffer';
 import { serializeEmulationOptions } from '../../config/emulation';
-import { normalizeDnsOptions, normalizeProxyOptions } from '../../config/network';
-import { normalizeCertificateAuthority, normalizeTlsIdentity } from '../../config/tls';
+import {
+  normalizeDnsOptions,
+  normalizeLocalBindOptions,
+  normalizeProxyOptions,
+} from '../../config/network';
+import {
+  normalizeCertificateAuthority,
+  normalizeTlsDanger,
+  normalizeTlsDebug,
+  normalizeTlsIdentity,
+} from '../../config/tls';
 import { Headers } from '../../headers';
 import { normalizeMethod, validateBrowserProfile } from '../../native/index';
 import type {
@@ -71,6 +80,24 @@ function resolveNativeTimeout(timeout: number | undefined): Pick<NativeRequestOp
   return { timeout: timeout === 0 ? 0 : Math.max(1, Math.ceil(timeout)) };
 }
 
+function resolveNativeDuration<TName extends 'readTimeout' | 'connectTimeout'>(
+  name: TName,
+  value: number | undefined
+): Pick<NativeRequestOptions, TName> | {} {
+  if (value === undefined) {
+    return {};
+  }
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new TypeError(`${name} must be a finite non-negative number`);
+  }
+
+  return { [name]: value === 0 ? 0 : Math.max(1, Math.ceil(value)) } as Pick<
+    NativeRequestOptions,
+    TName
+  >;
+}
+
 export function resolveOptions(init: WreqInit): ResolvedOptions {
   return {
     ...init,
@@ -102,6 +129,13 @@ export async function buildNativeRequest(
   const { proxy, disableSystemProxy } = normalizeProxyOptions(options.proxy);
   const body = await request._getBodyBytesForDispatch();
   const timeout = resolveNativeTimeout(options.timeout);
+  const readTimeout = resolveNativeDuration('readTimeout', options.readTimeout);
+  const connectTimeout = resolveNativeDuration('connectTimeout', options.connectTimeout);
+  const localBind = normalizeLocalBindOptions(options);
+
+  if (options.http1Only && options.http2Only) {
+    throw new TypeError('http1Only and http2Only cannot both be true');
+  }
 
   return {
     url: request.url,
@@ -115,9 +149,16 @@ export async function buildNativeRequest(
     disableSystemProxy,
     dns: normalizeDnsOptions(options.dns),
     ...timeout,
+    ...readTimeout,
+    ...connectTimeout,
     disableDefaultHeaders: options.disableDefaultHeaders,
     compress: options.compress,
+    http1Only: options.http1Only,
+    http2Only: options.http2Only,
+    ...localBind,
     tlsIdentity: normalizeTlsIdentity(options.tlsIdentity),
     ca: normalizeCertificateAuthority(options.ca),
+    tlsDebug: normalizeTlsDebug(options.tlsDebug),
+    tlsDanger: normalizeTlsDanger(options.tlsDanger),
   };
 }

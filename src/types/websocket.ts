@@ -6,6 +6,8 @@ import type {
   HeadersInit,
   Http1Options,
   Http2Options,
+  TlsDangerOptions,
+  TlsDebugOptions,
   TlsIdentity,
   TlsOptions,
 } from './shared';
@@ -26,10 +28,22 @@ export interface WebSocketInit {
   tlsOptions?: TlsOptions;
   tlsIdentity?: TlsIdentity;
   ca?: CertificateAuthority;
+  tlsDebug?: TlsDebugOptions;
+  tlsDanger?: TlsDangerOptions;
   http1Options?: Http1Options;
   http2Options?: Http2Options;
   protocols?: string | string[];
   binaryType?: WebSocketBinaryType;
+  forceHttp2?: boolean;
+  readBufferSize?: number;
+  writeBufferSize?: number;
+  maxWriteBufferSize?: number;
+  acceptUnmaskedFrames?: boolean;
+  maxFrameSize?: number;
+  maxMessageSize?: number;
+  localAddress?: string;
+  localAddresses?: import('./shared').LocalAddresses;
+  interface?: string;
 }
 
 export interface NativeWebSocketConnectOptions {
@@ -45,7 +59,19 @@ export interface NativeWebSocketConnectOptions {
   disableDefaultHeaders?: boolean;
   tlsIdentity?: import('./native').NativeTlsIdentity;
   ca?: import('./native').NativeCertificateAuthority;
+  tlsDebug?: import('./native').NativeTlsDebug;
+  tlsDanger?: import('./native').NativeTlsDanger;
   protocols: string[];
+  forceHttp2?: boolean;
+  readBufferSize?: number;
+  writeBufferSize?: number;
+  maxWriteBufferSize?: number;
+  acceptUnmaskedFrames?: boolean;
+  maxFrameSize?: number;
+  maxMessageSize?: number;
+  localAddress?: string;
+  localAddresses?: import('./native').NativeLocalAddresses;
+  interface?: string;
 }
 
 export interface NativeWebSocketConnection {

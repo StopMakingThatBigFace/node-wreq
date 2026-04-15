@@ -5,6 +5,11 @@ export interface NativeDnsOptions {
   hosts?: Record<string, string[]>;
 }
 
+export interface NativeLocalAddresses {
+  ipv4?: string;
+  ipv6?: string;
+}
+
 export interface NativeTlsIdentityPem {
   cert: Buffer;
   key: Buffer;
@@ -22,6 +27,23 @@ export interface NativeCertificateAuthority {
   includeDefaultRoots: boolean;
 }
 
+export interface NativeTlsDebug {
+  peerCertificates?: boolean;
+  keylogFromEnv?: boolean;
+  keylogPath?: string;
+}
+
+export interface NativeTlsDanger {
+  certVerification?: boolean;
+  verifyHostname?: boolean;
+  sni?: boolean;
+}
+
+export interface NativeTlsPeerInfo {
+  peerCertificate?: Buffer;
+  peerCertificateChain?: Buffer[];
+}
+
 export interface NativeRequestOptions {
   url: string;
   method: HttpMethod;
@@ -34,10 +56,19 @@ export interface NativeRequestOptions {
   disableSystemProxy?: boolean;
   dns?: NativeDnsOptions;
   timeout?: number;
+  readTimeout?: number;
+  connectTimeout?: number;
   disableDefaultHeaders?: boolean;
   compress?: boolean;
+  http1Only?: boolean;
+  http2Only?: boolean;
+  localAddress?: string;
+  localAddresses?: NativeLocalAddresses;
+  interface?: string;
   tlsIdentity?: NativeTlsIdentity;
   ca?: NativeCertificateAuthority;
+  tlsDebug?: NativeTlsDebug;
+  tlsDanger?: NativeTlsDanger;
 }
 
 export interface NativeResponse {
@@ -49,5 +80,6 @@ export interface NativeResponse {
   cookies: Record<string, string>;
   setCookies?: string[];
   timings?: RequestTimings;
+  tls?: NativeTlsPeerInfo;
   url: string;
 }

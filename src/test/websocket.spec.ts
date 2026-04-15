@@ -129,6 +129,32 @@ describe('websocket', () => {
     );
   });
 
+  test('should reject invalid websocket size limits', async () => {
+    const socket = new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      maxFrameSize: 0,
+    });
+
+    await assert.rejects(
+      socket.opened,
+      (error: unknown) =>
+        error instanceof TypeError &&
+        error.message.includes('maxFrameSize must be a finite positive number')
+    );
+  });
+
+  test('should reject invalid websocket bind options', async () => {
+    const socket = new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      localAddress: 'bad-ip',
+    });
+
+    await assert.rejects(
+      socket.opened,
+      (error: unknown) =>
+        error instanceof TypeError &&
+        error.message.includes('localAddress must be a valid IPv4 or IPv6 address')
+    );
+  });
+
   test('should expose negotiated websocket extensions as a string', async () => {
     const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws');
 

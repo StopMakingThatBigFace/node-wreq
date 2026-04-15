@@ -14,7 +14,10 @@ import type {
   TlsIdentity,
   HttpMethod,
   RequestTimings,
+  TlsDangerOptions,
+  TlsDebugOptions,
   TlsOptions,
+  TlsPeerInfo,
 } from './shared';
 
 export type RequestInput = string | URL | WreqRequest | globalThis.Request;
@@ -66,6 +69,8 @@ export interface WreqInit {
   proxy?: string | false;
   dns?: DnsOptions;
   timeout?: number;
+  readTimeout?: number;
+  connectTimeout?: number;
   retry?: number | RetryOptions;
   redirect?: RedirectMode;
   maxRedirects?: number;
@@ -77,6 +82,13 @@ export interface WreqInit {
   tlsOptions?: TlsOptions;
   tlsIdentity?: TlsIdentity;
   ca?: CertificateAuthority;
+  tlsDebug?: TlsDebugOptions;
+  tlsDanger?: TlsDangerOptions;
+  http1Only?: boolean;
+  http2Only?: boolean;
+  localAddress?: string;
+  localAddresses?: import('./shared').LocalAddresses;
+  interface?: string;
   http1Options?: Http1Options;
   http2Options?: Http2Options;
   onStats?: (stats: RequestStats) => void | Promise<void>;
@@ -118,5 +130,6 @@ export interface WreqResponseMeta {
   readonly timings?: RequestTimings;
   readonly redirectChain: RedirectEntry[];
   readonly contentLength?: number;
+  readonly tls?: TlsPeerInfo;
   readable(): import('node:stream').Readable;
 }

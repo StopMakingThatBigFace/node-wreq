@@ -2,6 +2,7 @@ import { Blob, Buffer } from 'node:buffer';
 import { STATUS_CODES } from 'node:http';
 import { ReadableStream } from 'node:stream/web';
 import { TextDecoder } from 'node:util';
+import { RequestError, TimeoutError } from '../errors';
 import { Headers } from '../headers';
 import { nativeCancelBody, nativeReadBodyChunk } from '../native/index';
 import type {
@@ -10,6 +11,7 @@ import type {
   NativeResponse,
   RedirectEntry,
   RequestTimings,
+  TlsPeerInfo,
   WreqResponseMeta,
 } from '../types';
 import { cloneBytes, toBodyBytes } from './body/bytes';
@@ -67,6 +69,32 @@ function isNativeResponse(value: unknown): value is NativeResponse {
   );
 }
 
+function toBodyReadError(error: unknown): RequestError {
+  if (error instanceof TimeoutError || error instanceof RequestError) {
+    return error;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const lowered = message.toLowerCase();
+
+  if (lowered.includes('timed out') || lowered.includes('timeout')) {
+    return new TimeoutError(message, { cause: error });
+  }
+
+  return new RequestError(message, { cause: error });
+}
+
+function cloneTlsInfo(value: TlsPeerInfo | undefined): TlsPeerInfo | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return {
+    peerCertificate: value.peerCertificate ? Buffer.from(value.peerCertificate) : undefined,
+    peerCertificateChain: value.peerCertificateChain?.map((cert) => Buffer.from(cert)),
+  };
+}
+
 export class Response {
   readonly status: number;
   readonly statusText: string;
@@ -79,6 +107,7 @@ export class Response {
   _setCookies: string[];
   _timings?: RequestTimings;
   _redirectChain: RedirectEntry[];
+  _tls?: TlsPeerInfo;
   redirected: boolean;
   #payloadBytes: Uint8Array | null;
   #bodyHandle: number | null;
@@ -97,6 +126,7 @@ export class Response {
       this._setCookies = [...(body.setCookies ?? [])];
       this._timings = body.timings ? { ...body.timings } : undefined;
       this._redirectChain = [];
+      this._tls = cloneTlsInfo(body.tls);
       this.redirected = false;
       this.#payloadBytes = body.body !== undefined ? Buffer.from(body.body, 'utf8') : null;
       this.#bodyHandle = body.bodyHandle ?? null;
@@ -110,6 +140,7 @@ export class Response {
       this._setCookies = [];
       this._timings = undefined;
       this._redirectChain = [];
+      this._tls = undefined;
       this.redirected = false;
       this.#payloadBytes = toBodyBytes(body ?? null, 'Unsupported response body type');
       this.#bodyHandle = null;
@@ -182,6 +213,7 @@ export class Response {
     cloned._setCookies = [...this._setCookies];
     cloned._timings = this._timings ? { ...this._timings } : undefined;
     cloned._redirectChain = [...this._redirectChain];
+    cloned._tls = cloneTlsInfo(this._tls);
     cloned.redirected = this.redirected;
 
     const source = this.#ensureStreamSource();
@@ -245,7 +277,14 @@ export class Response {
     this.#bodyHandle = null;
     this.#streamSource = new ReadableStream<Uint8Array>({
       pull: async (controller) => {
-        const result = await nativeReadBodyChunk(handle);
+        let result;
+
+        try {
+          result = await nativeReadBodyChunk(handle);
+        } catch (error) {
+          this.#markBodyComplete();
+          throw toBodyReadError(error);
+        }
 
         if (result.chunk.length > 0) {
           controller.enqueue(new Uint8Array(result.chunk));
