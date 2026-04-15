@@ -37,6 +37,32 @@ describe('hooks and retries', () => {
     );
   });
 
+  test('should allow beforeRequest to short-circuit with a synthetic response', async () => {
+    const response = await fetch(`${getBaseUrl()}/headers/raw`, {
+      hooks: {
+        beforeRequest: [
+          () =>
+            new WreqResponse(JSON.stringify({ shortCircuited: true }), {
+              status: 204,
+              headers: { 'content-type': 'application/json' },
+              url: 'https://local/short-circuit',
+            }),
+        ],
+      },
+    });
+
+    assert.strictEqual(response.status, 204);
+    assert.deepStrictEqual(await response.json(), { shortCircuited: true });
+    assert.strictEqual(response.url, 'https://local/short-circuit');
+    assert.deepStrictEqual(response.wreq.timings, {
+      startTime: response.wreq.timings?.startTime,
+      responseStart: response.wreq.timings?.startTime,
+      wait: 0,
+      endTime: response.wreq.timings?.startTime,
+      total: 0,
+    });
+  });
+
   test('should allow afterResponse to replace the response', async () => {
     const response = await fetch('https://httpbin.org/status/201', {
       browser: 'chrome_137',
@@ -113,6 +139,84 @@ describe('hooks and retries', () => {
 
     assert.strictEqual(body.attempt, 3, 'third attempt should be the successful response');
     assert.strictEqual(body.retried, true, 'server should observe retries');
+  });
+
+  test('should allow shouldRetry to veto a retryable response', async () => {
+    retryAttempts.set('retry-veto', 0);
+
+    const response = await fetch(`${getBaseUrl()}/retry?key=retry-veto&failCount=1`, {
+      retry: {
+        limit: 1,
+        statusCodes: [503],
+        shouldRetry: () => false,
+      },
+    });
+
+    assert.strictEqual(response.status, 503);
+    assert.deepStrictEqual(await response.json(), {
+      attempt: 1,
+      retried: false,
+    });
+  });
+
+  test('should stop retrying when the retry limit is exhausted', async () => {
+    retryAttempts.set('retry-limit', 0);
+
+    const response = await fetch(`${getBaseUrl()}/retry?key=retry-limit&failCount=2`, {
+      retry: {
+        limit: 1,
+        statusCodes: [503],
+        backoff: () => 0,
+      },
+    });
+
+    assert.strictEqual(response.status, 503);
+    assert.deepStrictEqual(await response.json(), {
+      attempt: 2,
+      retried: false,
+    });
+  });
+
+  test('should not retry methods outside the configured retry method list', async () => {
+    retryAttempts.set('retry-methods', 0);
+
+    const response = await fetch(`${getBaseUrl()}/retry?key=retry-methods&failCount=1`, {
+      method: 'POST',
+      body: 'payload',
+      retry: {
+        limit: 2,
+        methods: ['GET'],
+        statusCodes: [503],
+      },
+    });
+
+    assert.strictEqual(response.status, 503);
+    assert.deepStrictEqual(await response.json(), {
+      attempt: 1,
+      retried: false,
+    });
+  });
+
+  test('should retry timeout errors when their error code is configured', async () => {
+    retryAttempts.set('retry-timeout', 0);
+
+    const response = await fetch(
+      `${getBaseUrl()}/retry/timeout?key=retry-timeout&failCount=1&delayMs=100`,
+      {
+        timeout: 25,
+        retry: {
+          limit: 1,
+          errorCodes: ['ERR_TIMEOUT'],
+          backoff: () => 0,
+        },
+      }
+    );
+
+    assert.strictEqual(response.status, 200);
+    assert.deepStrictEqual(await response.json(), {
+      attempt: 2,
+      timedOut: false,
+    });
   });
 
   test('should expose response timings and onStats callback data', async () => {

@@ -170,6 +170,98 @@ describe('http client', () => {
     );
   });
 
+  test('should allow validateStatus to accept a custom non-2xx response', async () => {
+    const response = await fetch(`${getBaseUrl()}/status/418`, {
+      throwHttpErrors: true,
+      validateStatus: (status) => status === 418,
+    });
+
+    assert.strictEqual(response.status, 418);
+    assert.deepStrictEqual(await response.json(), { status: 418 });
+  });
+
+  test('should reject responses when validateStatus returns false', async () => {
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/status/204`, {
+          throwHttpErrors: false,
+          validateStatus: () => false,
+        });
+      },
+      (error: unknown) => error instanceof Error && error.name === 'HTTPError'
+    );
+  });
+
+  test('should support client.post helper', async () => {
+    const client = createClient({
+      baseURL: getBaseUrl(),
+    });
+
+    const response = await client.post('/body/echo', JSON.stringify({ created: true }), {
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    const body = await response.json<{ method: string; body: string }>();
+
+    assert.strictEqual(body.method, 'POST');
+    assert.strictEqual(body.body, JSON.stringify({ created: true }));
+  });
+
+  test('should merge defaults through client.extend', async () => {
+    let observedState: Record<string, unknown> | undefined;
+
+    const baseClient = createClient({
+      baseURL: getBaseUrl(),
+      headers: {
+        'x-base': 'one',
+      },
+      query: {
+        base: '1',
+      },
+      context: {
+        fromBase: true,
+      },
+      hooks: {
+        beforeRequest: [
+          ({ request, state }) => {
+            observedState = { ...state };
+            request.headers.set(
+              'x-state',
+              `${String(state.fromBase)}:${String(state.fromOverride)}`
+            );
+          },
+        ],
+      },
+    });
+
+    const client = baseClient.extend({
+      headers: {
+        'x-extended': 'two',
+      },
+      query: {
+        extended: '2',
+      },
+      context: {
+        fromOverride: true,
+      },
+    });
+
+    const response = await client.get('/headers/raw');
+    const body = await response.json<{ headers: Record<string, string> }>();
+    const requestUrl = new URL(response.url);
+
+    assert.strictEqual(body.headers['x-base'], 'one');
+    assert.strictEqual(body.headers['x-extended'], 'two');
+    assert.strictEqual(body.headers['x-state'], 'true:true');
+    assert.strictEqual(requestUrl.searchParams.get('base'), '1');
+    assert.strictEqual(requestUrl.searchParams.get('extended'), '2');
+    assert.deepStrictEqual(observedState, {
+      fromBase: true,
+      fromOverride: true,
+    });
+  });
+
   test('should preserve ordered header tuples and original header names', async () => {
     const response = await fetch(`${getBaseUrl()}/headers/raw`, {
       browser: 'chrome_137',

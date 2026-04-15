@@ -1,7 +1,12 @@
 import assert from 'node:assert';
 import { Buffer } from 'node:buffer';
 import { describe, test } from 'node:test';
-import { CloseEvent as WreqCloseEvent, WebSocket as WreqWebSocket, websocket } from '../node-wreq';
+import {
+  CloseEvent as WreqCloseEvent,
+  WebSocket as WreqWebSocket,
+  createClient,
+  websocket,
+} from '../node-wreq';
 import { onceEvent, setupLocalTestServer } from './helpers/local-server';
 
 describe('websocket', () => {
@@ -170,6 +175,44 @@ describe('websocket', () => {
       setTimeout(resolve, 25);
     });
     assert.strictEqual(socket.bufferedAmount, 0, 'bufferedAmount should drain after send');
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000, 'done');
+    await closePromise;
+  });
+
+  test('should support client.websocket with merged defaults', async () => {
+    const client = createClient({
+      baseURL: getBaseUrl().replace('http://', 'ws://'),
+      query: {
+        base: '1',
+      },
+      headers: {
+        'x-base': 'one',
+      },
+    });
+
+    const socket = await client.websocket('/ws', {
+      query: {
+        extra: '2',
+      },
+      headers: {
+        'x-extra': 'two',
+      },
+    });
+
+    const connectedEvent = await onceEvent<MessageEvent>(socket, 'message');
+    const connected = JSON.parse(String(connectedEvent.data)) as {
+      rawHeaders: string[];
+      url: string;
+    };
+
+    assert.ok(connected.url.includes('/ws?'));
+    assert.ok(connected.url.includes('base=1'));
+    assert.ok(connected.url.includes('extra=2'));
+    assert.ok(connected.rawHeaders.includes('x-base'));
+    assert.ok(connected.rawHeaders.includes('x-extra'));
 
     const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 

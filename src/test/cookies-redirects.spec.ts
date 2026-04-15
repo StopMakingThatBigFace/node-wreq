@@ -180,4 +180,30 @@ describe('cookies and redirects', () => {
       'redirect error mode should throw on first redirect response'
     );
   });
+
+  test('should reject when maxRedirects is exceeded', async () => {
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/redirect/chain?count=2`, {
+          maxRedirects: 1,
+        });
+      },
+      (error: unknown) =>
+        error instanceof Error &&
+        'code' in (error as object) &&
+        (error as { code?: unknown }).code === 'ERR_TOO_MANY_REDIRECTS'
+    );
+  });
+
+  test('should reject redirect loops', async () => {
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/redirect/loop-a`);
+      },
+      (error: unknown) =>
+        error instanceof Error &&
+        'code' in (error as object) &&
+        (error as { code?: unknown }).code === 'ERR_REDIRECT_LOOP'
+    );
+  });
 });

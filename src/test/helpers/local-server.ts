@@ -69,12 +69,14 @@ export function setupLocalTestServer() {
 
     wsServer.on('connection', (socket: WsPeer, request: IncomingMessage) => {
       const cookie = readCookieHeader(request);
+      const url = new URL(request.url ?? '/', 'http://127.0.0.1');
 
       socket.send(
         JSON.stringify({
           kind: 'connected',
           cookie,
           protocol: socket.protocol,
+          url: url.pathname + url.search,
           rawHeaders: request.rawHeaders,
         })
       );
@@ -108,6 +110,29 @@ export function setupLocalTestServer() {
           }
 
           sendJson(response, 200, { attempt: count, retried: count > 1 });
+
+          return;
+        }
+
+        if (url.pathname === '/retry/timeout') {
+          const key = url.searchParams.get('key') ?? 'default-timeout';
+          const failCount = Number(url.searchParams.get('failCount') ?? '0');
+          const delayMs = Number(url.searchParams.get('delayMs') ?? '100');
+          const count = (retryAttempts.get(key) ?? 0) + 1;
+
+          retryAttempts.set(key, count);
+
+          if (count <= failCount) {
+            setTimeout(() => {
+              if (!response.writableEnded) {
+                sendJson(response, 200, { attempt: count, timedOut: true });
+              }
+            }, delayMs);
+
+            return;
+          }
+
+          sendJson(response, 200, { attempt: count, timedOut: false });
 
           return;
         }
@@ -197,6 +222,14 @@ export function setupLocalTestServer() {
           return;
         }
 
+        if (url.pathname.startsWith('/status/')) {
+          const status = Number(url.pathname.slice('/status/'.length));
+
+          sendJson(response, status, { status });
+
+          return;
+        }
+
         if (url.pathname === '/redirect/start') {
           response.writeHead(302, {
             location: '/redirect/final',
@@ -210,6 +243,44 @@ export function setupLocalTestServer() {
         if (url.pathname === '/redirect/post-start') {
           response.writeHead(302, {
             location: '/redirect/final',
+          });
+          response.end();
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/chain') {
+          const count = Number(url.searchParams.get('count') ?? '0');
+
+          if (count > 0) {
+            response.writeHead(302, {
+              location: `/redirect/chain?count=${count - 1}`,
+            });
+            response.end();
+
+            return;
+          }
+
+          response.writeHead(302, {
+            location: '/redirect/final',
+          });
+          response.end();
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/loop-a') {
+          response.writeHead(302, {
+            location: '/redirect/loop-b',
+          });
+          response.end();
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/loop-b') {
+          response.writeHead(302, {
+            location: '/redirect/loop-a',
           });
           response.end();
 

@@ -82,6 +82,30 @@ describe('transport features', () => {
     );
   });
 
+  test('should omit accept-encoding when compression is disabled', async () => {
+    const compressed = await fetch(`${getBaseUrl()}/headers/raw`, {
+      browser: 'chrome_137',
+    });
+    const compressedBody = await compressed.json<{ headers: Record<string, string> }>();
+
+    assert.ok(
+      compressedBody.headers['accept-encoding'],
+      'compression-enabled requests should advertise accept-encoding'
+    );
+
+    const uncompressed = await fetch(`${getBaseUrl()}/headers/raw`, {
+      browser: 'chrome_137',
+      compress: false,
+    });
+    const uncompressedBody = await uncompressed.json<{ headers: Record<string, string> }>();
+
+    assert.strictEqual(
+      uncompressedBody.headers['accept-encoding'],
+      undefined,
+      'compression-disabled requests should not send accept-encoding'
+    );
+  });
+
   test('should support per-request DNS host overrides', async () => {
     const target = new URL(`${getBaseUrl()}/headers/raw`);
 
@@ -148,5 +172,29 @@ describe('transport features', () => {
         process.env[key] = value;
       }
     }
+  });
+
+  test('should disable browser preset headers when disableDefaultHeaders is true', async () => {
+    const defaultResponse = await fetch(`${getBaseUrl()}/headers/raw`, {
+      browser: 'chrome_137',
+    });
+    const defaultBody = await defaultResponse.json<{ headers: Record<string, string> }>();
+
+    assert.ok(defaultBody.headers['user-agent'], 'browser presets should include user-agent');
+    assert.ok(
+      defaultBody.headers['accept-language'],
+      'browser presets should include accept-language'
+    );
+
+    const strippedResponse = await fetch(`${getBaseUrl()}/headers/raw`, {
+      browser: 'chrome_137',
+      disableDefaultHeaders: true,
+    });
+    const strippedBody = await strippedResponse.json<{ headers: Record<string, string> }>();
+
+    assert.strictEqual(strippedBody.headers['user-agent'], undefined);
+    assert.strictEqual(strippedBody.headers['accept-language'], undefined);
+    assert.strictEqual(strippedBody.headers['sec-ch-ua'], undefined);
+    assert.ok(strippedBody.headers.host, 'transport-managed headers should still be present');
   });
 });
