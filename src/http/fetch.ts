@@ -61,7 +61,11 @@ export async function fetch(input: RequestInput, init?: WreqInit) {
 
       let response =
         shortCircuit ??
-        (await dispatchNativeRequest(await buildNativeRequest(request, options), startTime));
+        (await dispatchNativeRequest(
+          await buildNativeRequest(request, options),
+          startTime,
+          options.signal
+        ));
 
       if (shortCircuit) {
         response.setTimings({

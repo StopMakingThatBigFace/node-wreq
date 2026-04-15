@@ -79,6 +79,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Install Rust linting components
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
       - name: Check TypeScript types
         run: npx tsc --noEmit
 
@@ -87,3 +92,9 @@ jobs:
 
       - name: Check code formatting
         run: npm run format:check
+
+      - name: Check Rust formatting
+        run: npm run format:rust:check
+
+      - name: Run clippy
+        run: npm run lint:rust

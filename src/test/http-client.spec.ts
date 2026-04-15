@@ -66,6 +66,75 @@ describe('http client', () => {
     );
   });
 
+  test('should disable request timeout when timeout is set to 0', async () => {
+    const response = await fetch(`${getBaseUrl()}/timings/delay`, {
+      browser: 'chrome_137',
+      timeout: 0,
+    });
+
+    assert.strictEqual(response.status, 200);
+    assert.deepStrictEqual(await response.json(), { delayed: true });
+  });
+
+  test('should abort requests after dispatch has started', async () => {
+    const controller = new AbortController();
+    const responsePromise = fetch(`${getBaseUrl()}/timings/delay?ms=250`, {
+      browser: 'chrome_137',
+      timeout: 0,
+      signal: controller.signal,
+    });
+
+    setTimeout(() => {
+      controller.abort(new Error('stop'));
+    }, 20);
+
+    await assert.rejects(responsePromise, {
+      name: 'AbortError',
+      code: 'ERR_ABORTED',
+    });
+  });
+
+  test('should reject invalid timeout values', async () => {
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/headers/raw`, {
+          browser: 'chrome_137',
+          timeout: Number.NaN,
+        });
+      },
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.strictEqual(error.name, 'RequestError');
+        const cause = (error as { cause?: unknown }).cause;
+
+        assert.ok(
+          cause instanceof TypeError,
+          'invalid timeout should be surfaced with the original TypeError as cause'
+        );
+
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/headers/raw`, {
+          browser: 'chrome_137',
+          timeout: -1,
+        });
+      },
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.strictEqual(error.name, 'RequestError');
+        const cause = (error as { cause?: unknown }).cause;
+
+        assert.ok(cause instanceof TypeError);
+
+        return true;
+      }
+    );
+  });
+
   test('should support fetch-style requests', async () => {
     const response = await fetch('https://httpbin.org/get', {
       browser: 'chrome_137',

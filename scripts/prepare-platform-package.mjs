@@ -1,11 +1,11 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { getPlatformTargetByTriple } from "./platform-targets.mjs";
-import { resolvePublishVersion } from "./publish-version.mjs";
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getPlatformTargetByTriple } from './platform-targets.mjs';
+import { resolvePublishVersion } from './publish-version.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "..");
+const repoRoot = resolve(__dirname, '..');
 
 function parseArgs(argv) {
   const args = {};
@@ -14,7 +14,7 @@ function parseArgs(argv) {
     const key = argv[index];
     const value = argv[index + 1];
 
-    if (!key.startsWith("--")) {
+    if (!key.startsWith('--')) {
       continue;
     }
 
@@ -33,16 +33,14 @@ if (!target) {
 }
 
 if (!args.binary) {
-  throw new Error("Missing required --binary argument");
+  throw new Error('Missing required --binary argument');
 }
 
 if (!args.outDir) {
-  throw new Error("Missing required --outDir argument");
+  throw new Error('Missing required --outDir argument');
 }
 
-const rootPackage = JSON.parse(
-  await readFile(resolve(repoRoot, "package.json"), "utf8"),
-);
+const rootPackage = JSON.parse(await readFile(resolve(repoRoot, 'package.json'), 'utf8'));
 const publishVersion = resolvePublishVersion(rootPackage);
 const outDir = resolve(repoRoot, args.outDir);
 const binarySource = resolve(repoRoot, args.binary);
@@ -64,15 +62,15 @@ const packageJson = {
   cpu: target.cpu,
   ...(target.libc ? { libc: target.libc } : {}),
   main: `./${target.binaryName}`,
-  files: [target.binaryName, "README.md"],
+  files: [target.binaryName, 'README.md'],
   publishConfig: {
-    access: "public",
+    access: 'public',
   },
 };
 
 const mainPackageUrl =
-  typeof rootPackage.homepage === "string"
-    ? rootPackage.homepage.replace(/#readme$/, "")
+  typeof rootPackage.homepage === 'string'
+    ? rootPackage.homepage.replace(/#readme$/, '')
     : `https://www.npmjs.com/package/${rootPackage.name}`;
 
 const readme = `# ${target.packageName}
@@ -92,9 +90,9 @@ Binary: \`${basename(target.binaryName)}\`
 `;
 
 await writeFile(
-  resolve(outDir, "package.json"),
+  resolve(outDir, 'package.json'),
   `${JSON.stringify(packageJson, null, 2)}\n`,
-  "utf8",
+  'utf8'
 );
 
-await writeFile(resolve(outDir, "README.md"), readme, "utf8");
+await writeFile(resolve(outDir, 'README.md'), readme, 'utf8');

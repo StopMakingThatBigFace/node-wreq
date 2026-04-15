@@ -9,7 +9,11 @@ import type {
 } from '../types';
 
 export type NativeBinding = {
-  request: (options: NativeRequestOptions) => Promise<NativeResponse>;
+  request: (options: NativeRequestOptions) => {
+    handle: number;
+    promise: Promise<NativeResponse>;
+  };
+  cancelRequest: (handle: number) => boolean;
   websocketConnect: (options: NativeWebSocketConnectOptions) => Promise<NativeWebSocketConnection>;
   websocketRead: (handle: number) => Promise<NativeWebSocketReadResult>;
   websocketSendText: (handle: number, text: string) => Promise<void>;

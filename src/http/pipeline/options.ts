@@ -59,6 +59,18 @@ export function resolveRetryOptions(retry?: WreqInit['retry']): ResolvedRetryOpt
   };
 }
 
+function resolveNativeTimeout(timeout: number | undefined): Pick<NativeRequestOptions, 'timeout'> {
+  if (timeout === undefined) {
+    return {};
+  }
+
+  if (!Number.isFinite(timeout) || timeout < 0) {
+    throw new TypeError('timeout must be a finite non-negative number');
+  }
+
+  return { timeout: timeout === 0 ? 0 : Math.max(1, Math.ceil(timeout)) };
+}
+
 export function resolveOptions(init: WreqInit): ResolvedOptions {
   return {
     ...init,
@@ -89,6 +101,7 @@ export async function buildNativeRequest(
 ): Promise<NativeRequestOptions> {
   const { proxy, disableSystemProxy } = normalizeProxyOptions(options.proxy);
   const body = await request._getBodyBytesForDispatch();
+  const timeout = resolveNativeTimeout(options.timeout);
 
   return {
     url: request.url,
@@ -101,7 +114,7 @@ export async function buildNativeRequest(
     proxy,
     disableSystemProxy,
     dns: normalizeDnsOptions(options.dns),
-    timeout: options.timeout,
+    ...timeout,
     disableDefaultHeaders: options.disableDefaultHeaders,
     compress: options.compress,
     tlsIdentity: normalizeTlsIdentity(options.tlsIdentity),

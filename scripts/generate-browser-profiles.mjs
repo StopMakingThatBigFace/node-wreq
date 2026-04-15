@@ -1,9 +1,9 @@
+import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { execFile } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
-import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { platformTargets } from './platform-targets.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,6 +19,7 @@ function isMuslRuntime() {
 
   if (typeof process.report?.getReport === 'function') {
     const report = process.report.getReport();
+
     if (report?.header?.glibcVersionRuntime) {
       return false;
     }
@@ -45,11 +46,15 @@ function resolveLocalBinary() {
 
 async function loadProfiles() {
   const localBinary = resolveLocalBinary();
+
   if (!localBinary) {
-    throw new Error(`Unsupported host platform for profile generation: ${process.platform}-${process.arch}`);
+    throw new Error(
+      `Unsupported host platform for profile generation: ${process.platform}-${process.arch}`
+    );
   }
 
   const binding = require(localBinary);
+
   return binding.getProfiles();
 }
 

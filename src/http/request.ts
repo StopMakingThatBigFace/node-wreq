@@ -84,6 +84,7 @@ export class Request {
     });
 
     cloned.#bodyBytes = cloneBytes(this.#bodyBytes);
+    cloned.#multipartBody = this.#multipartBody?.clone() ?? null;
 
     return cloned;
   }

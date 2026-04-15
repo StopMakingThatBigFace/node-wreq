@@ -1,5 +1,4 @@
 use crate::store::body_store::store_body;
-use crate::store::runtime::runtime;
 use crate::transport::cookies::parse_cookie_pair;
 use crate::transport::dns::configure_client_builder as configure_dns;
 use crate::transport::headers::build_orig_header_map;
@@ -9,10 +8,6 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::time::Duration;
 use wreq::redirect;
-
-pub fn execute_request(options: RequestOptions) -> Result<Response> {
-    runtime().block_on(make_request(options))
-}
 
 pub async fn make_request(options: RequestOptions) -> Result<Response> {
     let RequestOptions {
@@ -51,11 +46,7 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
         .build()
         .context("Failed to build HTTP client")?;
 
-    let method = if method.is_empty() {
-        "GET"
-    } else {
-        &method
-    };
+    let method = if method.is_empty() { "GET" } else { &method };
 
     let mut request = match method.to_uppercase().as_str() {
         "GET" => client.get(&url),
@@ -79,7 +70,9 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
         request = request.body(body);
     }
 
-    request = request.timeout(Duration::from_millis(timeout));
+    if let Some(timeout) = timeout {
+        request = request.timeout(Duration::from_millis(timeout));
+    }
     request = request.redirect(redirect::Policy::none());
     request = request.default_headers(!disable_default_headers);
     request = request.gzip(compress);
