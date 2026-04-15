@@ -2,7 +2,8 @@
 
 [![NPM Version](https://img.shields.io/npm/v/node-wreq)](https://npmjs.com/package/node-wreq)
 ![ESM](https://img.shields.io/badge/ESM-supported-brightgreen)
-![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20windows-lightgrey)
+![CJS](https://img.shields.io/badge/CJS-supported-brightgreen)
+![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20MacOS%20%7C%20Windows-lightgrey)
 
 `node-wreq` is a thin Node.js wrapper around 0x676e67's [`wreq`](https://github.com/0x676e67/wreq) — 
 a Rust HTTP client exposing its full power to JavaScript.
