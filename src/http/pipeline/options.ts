@@ -3,7 +3,7 @@ import { serializeEmulationOptions } from '../../config/emulation';
 import { normalizeDnsOptions, normalizeProxyOptions } from '../../config/network';
 import { normalizeCertificateAuthority, normalizeTlsIdentity } from '../../config/tls';
 import { Headers } from '../../headers';
-import { normalizeMethod, validateBrowserProfile } from '../../native';
+import { normalizeMethod, validateBrowserProfile } from '../../native/index';
 import type {
   NativeRequestOptions,
   ResolvedOptions,

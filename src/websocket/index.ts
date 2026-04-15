@@ -10,7 +10,7 @@ import {
   nativeWebSocketSendBinary,
   nativeWebSocketSendText,
   validateBrowserProfile,
-} from '../native';
+} from '../native/index';
 import type { WebSocketBinaryType, WebSocketInit } from '../types';
 import { CloseEvent } from './close-event';
 import { getSendByteLength, normalizeSendData, toMessageEventData } from './send-data';

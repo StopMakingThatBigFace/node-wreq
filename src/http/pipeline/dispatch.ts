@@ -1,5 +1,5 @@
 import { AbortError, RequestError, TimeoutError } from '../../errors';
-import { nativeRequest } from '../../native';
+import { nativeRequest } from '../../native/index';
 import type { NativeRequestOptions, RequestStats, WreqInit } from '../../types';
 import { Response } from '../response';
 

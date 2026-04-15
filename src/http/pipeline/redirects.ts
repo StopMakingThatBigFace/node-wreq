@@ -1,6 +1,6 @@
 import { RequestError } from '../../errors';
 import { Headers } from '../../headers';
-import { normalizeMethod } from '../../native';
+import { normalizeMethod } from '../../native/index';
 import type { BodyInit, HttpMethod, RedirectEntry } from '../../types';
 import { Response } from '../response';
 
