@@ -1,4 +1,7 @@
+import { Buffer } from 'node:buffer';
 import { serializeEmulationOptions } from '../../config/emulation';
+import { normalizeDnsOptions, normalizeProxyOptions } from '../../config/network';
+import { normalizeCertificateAuthority, normalizeTlsIdentity } from '../../config/tls';
 import { Headers } from '../../headers';
 import { normalizeMethod, validateBrowserProfile } from '../../native';
 import type {
@@ -66,7 +69,6 @@ export function resolveOptions(init: WreqInit): ResolvedOptions {
     throwHttpErrors: init.throwHttpErrors ?? false,
     disableDefaultHeaders: init.disableDefaultHeaders ?? false,
     compress: init.compress ?? true,
-    keepOriginalHeaderNames: init.keepOriginalHeaderNames ?? false,
   };
 }
 
@@ -81,21 +83,28 @@ export function createRequest(urlInput: string | URL, options: ResolvedOptions):
   });
 }
 
-export function buildNativeRequest(
+export async function buildNativeRequest(
   request: Request,
   options: ResolvedOptions
-): NativeRequestOptions {
+): Promise<NativeRequestOptions> {
+  const { proxy, disableSystemProxy } = normalizeProxyOptions(options.proxy);
+  const body = await request._getBodyBytesForDispatch();
+
   return {
     url: request.url,
     method: normalizeMethod(request.method),
     headers: request.headers.toTuples(),
-    origHeaders: options.keepOriginalHeaderNames ? request.headers.toOriginalNames() : undefined,
-    body: request._getBodyTextForDispatch(),
+    origHeaders: request.headers.toOriginalNames(),
+    body: body ? Buffer.from(body) : undefined,
     browser: options.browser,
     emulationJson: serializeEmulationOptions(options),
-    proxy: options.proxy,
+    proxy,
+    disableSystemProxy,
+    dns: normalizeDnsOptions(options.dns),
     timeout: options.timeout,
     disableDefaultHeaders: options.disableDefaultHeaders,
     compress: options.compress,
+    tlsIdentity: normalizeTlsIdentity(options.tlsIdentity),
+    ca: normalizeCertificateAuthority(options.ca),
   };
 }

@@ -1,6 +1,8 @@
 use crate::store::runtime::runtime;
 use crate::store::websocket_store::{insert_websocket, WebSocketCommand};
+use crate::transport::dns::configure_client_builder as configure_dns;
 use crate::transport::headers::build_orig_header_map;
+use crate::transport::tls::configure_client_builder;
 use crate::transport::types::{WebSocketConnectOptions, WebSocketConnection, WebSocketReadResult};
 use anyhow::{Context, Result};
 use std::time::Duration;
@@ -131,23 +133,43 @@ async fn run_websocket_task(
 }
 
 async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketConnection> {
-    let mut client_builder = wreq::Client::builder()
-        .emulation(options.emulation)
-        .cookie_store(true)
-        .timeout(Duration::from_millis(options.timeout));
+    let WebSocketConnectOptions {
+        url,
+        emulation,
+        headers,
+        orig_headers,
+        proxy,
+        disable_system_proxy,
+        dns,
+        timeout,
+        disable_default_headers,
+        protocols,
+        tls_identity,
+        certificate_authority,
+    } = options;
 
-    if let Some(proxy_url) = &options.proxy {
+    let mut client_builder = wreq::Client::builder()
+        .emulation(emulation)
+        .cookie_store(true)
+        .timeout(Duration::from_millis(timeout));
+
+    if disable_system_proxy {
+        client_builder = client_builder.no_proxy();
+    } else if let Some(proxy_url) = &proxy {
         let proxy = wreq::Proxy::all(proxy_url).context("Failed to create proxy")?;
         client_builder = client_builder.proxy(proxy);
     }
+
+    client_builder = configure_dns(client_builder, dns)?;
+    client_builder = configure_client_builder(client_builder, tls_identity, certificate_authority)?;
 
     let client = client_builder
         .build()
         .context("Failed to build WebSocket client")?;
 
-    let mut request = client.websocket(&options.url);
-    let orig_headers = build_orig_header_map(&options.orig_headers);
-    for (key, value) in &options.headers {
+    let mut request = client.websocket(&url);
+    let orig_headers = build_orig_header_map(&orig_headers);
+    for (key, value) in &headers {
         request = request.header(key, value);
     }
 
@@ -155,16 +177,16 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
         request = request.orig_headers(orig_headers);
     }
 
-    request = request.default_headers(!options.disable_default_headers);
+    request = request.default_headers(!disable_default_headers);
 
-    if !options.protocols.is_empty() {
-        request = request.protocols(options.protocols.iter().cloned());
+    if !protocols.is_empty() {
+        request = request.protocols(protocols.iter().cloned());
     }
 
     let response = request
         .send()
         .await
-        .with_context(|| format!("WS {}", options.url))?;
+        .with_context(|| format!("WS {}", url))?;
 
     let extensions = response
         .headers()
@@ -175,7 +197,7 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
     let websocket = response
         .into_websocket()
         .await
-        .with_context(|| format!("WS upgrade {}", options.url))?;
+        .with_context(|| format!("WS upgrade {}", url))?;
 
     let protocol = websocket
         .protocol()
@@ -191,6 +213,6 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
         handle,
         protocol,
         extensions,
-        url: options.url,
+        url,
     })
 }

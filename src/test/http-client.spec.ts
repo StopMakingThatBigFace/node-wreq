@@ -101,11 +101,10 @@ describe('http client', () => {
     );
   });
 
-  test('should preserve ordered header tuples and original header names when requested', async () => {
+  test('should preserve ordered header tuples and original header names', async () => {
     const response = await fetch(`${getBaseUrl()}/headers/raw`, {
       browser: 'chrome_137',
       disableDefaultHeaders: true,
-      keepOriginalHeaderNames: true,
       headers: [
         ['x-lower', 'one'],
         ['X-Mixed', 'two'],

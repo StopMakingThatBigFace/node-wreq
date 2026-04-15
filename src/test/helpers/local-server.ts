@@ -2,6 +2,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { after, before } from 'node:test';
 import { WebSocketServer, type WebSocket as WsPeer } from 'ws';
 
+const WINDOWS_1251_BODY = Buffer.from('cff0e8e2e5f22c20ece8f021', 'hex');
+const ZSTD_RESPONSE_BODY = Buffer.from('KLUv/QRYgQAAenN0ZCByZXNwb25zZSBva4lnadQ=', 'base64');
+
 export function onceEvent<T extends Event>(target: EventTarget, type: string): Promise<T> {
   return new Promise((resolve) => {
     const listener = (event: Event) => {
@@ -41,6 +44,16 @@ export function setupLocalTestServer() {
     response.end(JSON.stringify(body));
   }
 
+  async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+
+    for await (const chunk of request) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    return Buffer.concat(chunks);
+  }
+
   before(async () => {
     wsServer = new WebSocketServer({
       noServer: true,
@@ -78,105 +91,150 @@ export function setupLocalTestServer() {
     });
 
     localServer = createServer((request, response) => {
-      const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+      void (async () => {
+        const url = new URL(request.url ?? '/', 'http://127.0.0.1');
 
-      if (url.pathname === '/retry') {
-        const key = url.searchParams.get('key') ?? 'default';
-        const failCount = Number(url.searchParams.get('failCount') ?? '0');
-        const count = (retryAttempts.get(key) ?? 0) + 1;
+        if (url.pathname === '/retry') {
+          const key = url.searchParams.get('key') ?? 'default';
+          const failCount = Number(url.searchParams.get('failCount') ?? '0');
+          const count = (retryAttempts.get(key) ?? 0) + 1;
 
-        retryAttempts.set(key, count);
+          retryAttempts.set(key, count);
 
-        if (count <= failCount) {
-          sendJson(response, 503, { attempt: count, retried: false });
+          if (count <= failCount) {
+            sendJson(response, 503, { attempt: count, retried: false });
+
+            return;
+          }
+
+          sendJson(response, 200, { attempt: count, retried: count > 1 });
 
           return;
         }
 
-        sendJson(response, 200, { attempt: count, retried: count > 1 });
+        if (url.pathname === '/timings/delay') {
+          setTimeout(() => {
+            sendJson(response, 200, { delayed: true });
+          }, 50);
 
-        return;
-      }
+          return;
+        }
 
-      if (url.pathname === '/timings/delay') {
-        setTimeout(() => {
-          sendJson(response, 200, { delayed: true });
-        }, 50);
+        if (url.pathname === '/cookies/set') {
+          sendJson(
+            response,
+            200,
+            { stored: true },
+            {
+              'set-cookie': 'session=abc123',
+            }
+          );
 
-        return;
-      }
+          return;
+        }
 
-      if (url.pathname === '/cookies/set') {
-        sendJson(
-          response,
-          200,
-          { stored: true },
-          {
-            'set-cookie': 'session=abc123',
-          }
+        if (url.pathname === '/cookies/set-multiple') {
+          sendJson(
+            response,
+            200,
+            { stored: true },
+            {
+              'set-cookie': ['session=abc123; Path=/', 'csrf=token123; Path=/'],
+            }
+          );
+
+          return;
+        }
+
+        if (url.pathname === '/cookies/echo') {
+          sendJson(response, 200, { cookie: readCookieHeader(request) });
+
+          return;
+        }
+
+        if (url.pathname === '/headers/raw') {
+          sendJson(response, 200, {
+            rawHeaders: request.rawHeaders,
+            headers: request.headers,
+          });
+
+          return;
+        }
+
+        if (url.pathname === '/body/echo') {
+          const body = await readRequestBody(request);
+
+          sendJson(response, 200, {
+            method: request.method,
+            headers: request.headers,
+            body: body.toString('utf8'),
+            bodyBase64: body.toString('base64'),
+          });
+
+          return;
+        }
+
+        if (url.pathname === '/charset/windows-1251') {
+          response.writeHead(200, {
+            'content-type': 'text/plain; charset=windows-1251',
+            'content-length': String(WINDOWS_1251_BODY.length),
+          });
+          response.end(WINDOWS_1251_BODY);
+
+          return;
+        }
+
+        if (url.pathname === '/compress/zstd') {
+          response.writeHead(200, {
+            'content-type': 'text/plain; charset=utf-8',
+            'content-encoding': 'zstd',
+            'content-length': String(ZSTD_RESPONSE_BODY.length),
+          });
+          response.end(ZSTD_RESPONSE_BODY);
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/start') {
+          response.writeHead(302, {
+            location: '/redirect/final',
+            'set-cookie': 'redirect_session=1; Path=/',
+          });
+          response.end();
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/post-start') {
+          response.writeHead(302, {
+            location: '/redirect/final',
+          });
+          response.end();
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/final') {
+          sendJson(response, 200, {
+            method: request.method,
+            cookie: readCookieHeader(request),
+            hookHeader: request.headers['x-redirect-hook'] ?? '',
+          });
+
+          return;
+        }
+
+        sendJson(response, 404, { path: url.pathname });
+      })().catch((error: unknown) => {
+        response.writeHead(500, {
+          'content-type': 'application/json',
+        });
+        response.end(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+          })
         );
-
-        return;
-      }
-
-      if (url.pathname === '/cookies/set-multiple') {
-        sendJson(
-          response,
-          200,
-          { stored: true },
-          {
-            'set-cookie': ['session=abc123; Path=/', 'csrf=token123; Path=/'],
-          }
-        );
-
-        return;
-      }
-
-      if (url.pathname === '/cookies/echo') {
-        sendJson(response, 200, { cookie: readCookieHeader(request) });
-
-        return;
-      }
-
-      if (url.pathname === '/headers/raw') {
-        sendJson(response, 200, {
-          rawHeaders: request.rawHeaders,
-          headers: request.headers,
-        });
-
-        return;
-      }
-
-      if (url.pathname === '/redirect/start') {
-        response.writeHead(302, {
-          location: '/redirect/final',
-          'set-cookie': 'redirect_session=1; Path=/',
-        });
-        response.end();
-
-        return;
-      }
-
-      if (url.pathname === '/redirect/post-start') {
-        response.writeHead(302, {
-          location: '/redirect/final',
-        });
-        response.end();
-
-        return;
-      }
-
-      if (url.pathname === '/redirect/final') {
-        sendJson(response, 200, {
-          method: request.method,
-          cookie: readCookieHeader(request),
-          hookHeader: request.headers['x-redirect-hook'] ?? '',
-        });
-
-        return;
-      }
-
-      sendJson(response, 404, { path: url.pathname });
+      });
     });
 
     localServer.on('upgrade', (request, socket, head) => {

@@ -3,13 +3,20 @@ export type { BrowserProfile } from '../config/generated/browser-profiles';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD';
 
 export type HeaderTuple = [string, string];
+export type TlsBinaryInput = Buffer | ArrayBuffer | ArrayBufferView;
+export type TlsDataInput = string | TlsBinaryInput;
 
 export type HeadersInit =
   | Record<string, string | number | boolean | null | undefined>
   | HeaderTuple[]
   | Iterable<HeaderTuple>;
 
-export type BodyInit = string | URLSearchParams | Buffer | ArrayBuffer | ArrayBufferView;
+export type BodyInit = string | URLSearchParams | FormData | Buffer | ArrayBuffer | ArrayBufferView;
+
+export interface DnsOptions {
+  servers?: string | string[];
+  hosts?: Record<string, string | string[]>;
+}
 
 export type AlpnProtocol = 'HTTP1' | 'HTTP2' | 'HTTP3';
 export type AlpsProtocol = 'HTTP1' | 'HTTP2' | 'HTTP3';
@@ -68,6 +75,23 @@ export interface TlsOptions {
   aesHwOverride?: boolean;
   preserveTls13CipherList?: boolean;
   randomAesHwOverride?: boolean;
+}
+
+export interface TlsIdentityPem {
+  cert: TlsDataInput;
+  key: TlsDataInput;
+}
+
+export interface TlsIdentityPfx {
+  pfx: TlsBinaryInput;
+  passphrase?: string;
+}
+
+export type TlsIdentity = TlsIdentityPem | TlsIdentityPfx;
+
+export interface CertificateAuthority {
+  cert: TlsDataInput | TlsDataInput[];
+  includeDefaultRoots?: boolean;
 }
 
 export interface Http1Options {

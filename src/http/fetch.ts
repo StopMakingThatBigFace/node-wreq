@@ -61,7 +61,7 @@ export async function fetch(input: RequestInput, init?: WreqInit) {
 
       let response =
         shortCircuit ??
-        (await dispatchNativeRequest(buildNativeRequest(request, options), startTime));
+        (await dispatchNativeRequest(await buildNativeRequest(request, options), startTime));
 
       if (shortCircuit) {
         response.setTimings({
@@ -131,7 +131,7 @@ export async function fetch(input: RequestInput, init?: WreqInit) {
         const rewritten = rewriteRedirectMethodAndBody(
           normalizeMethod(request.method),
           response.status,
-          request._cloneBodyBytes() ?? undefined
+          (await request._cloneBodyBytes()) ?? undefined
         );
 
         const nextRequest = request._replace({

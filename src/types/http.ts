@@ -5,10 +5,13 @@ import type { Hooks, HookState } from './hooks';
 import type {
   BodyInit,
   BrowserProfile,
+  CertificateAuthority,
   CookieJar,
+  DnsOptions,
   HeadersInit,
   Http1Options,
   Http2Options,
+  TlsIdentity,
   HttpMethod,
   RequestTimings,
   TlsOptions,
@@ -55,13 +58,13 @@ export interface RequestStats {
 export interface WreqInit {
   method?: string;
   headers?: HeadersInit;
-  keepOriginalHeaderNames?: boolean;
   body?: BodyInit | null;
   signal?: AbortSignal | null;
   baseURL?: string;
   query?: Record<string, string | number | boolean | null | undefined>;
   browser?: BrowserProfile;
-  proxy?: string;
+  proxy?: string | false;
+  dns?: DnsOptions;
   timeout?: number;
   retry?: number | RetryOptions;
   redirect?: RedirectMode;
@@ -72,6 +75,8 @@ export interface WreqInit {
   disableDefaultHeaders?: boolean;
   compress?: boolean;
   tlsOptions?: TlsOptions;
+  tlsIdentity?: TlsIdentity;
+  ca?: CertificateAuthority;
   http1Options?: Http1Options;
   http2Options?: Http2Options;
   onStats?: (stats: RequestStats) => void | Promise<void>;
@@ -95,7 +100,6 @@ export interface ResolvedOptions extends Omit<
   | 'throwHttpErrors'
   | 'disableDefaultHeaders'
   | 'compress'
-  | 'keepOriginalHeaderNames'
   | 'redirect'
   | 'maxRedirects'
 > {
@@ -104,7 +108,6 @@ export interface ResolvedOptions extends Omit<
   throwHttpErrors: boolean;
   disableDefaultHeaders: boolean;
   compress: boolean;
-  keepOriginalHeaderNames: boolean;
   redirect: RedirectMode;
   maxRedirects: number;
 }

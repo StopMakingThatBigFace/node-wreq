@@ -1,9 +1,12 @@
 use crate::emulation::resolve_emulation;
 use crate::napi::profiles::parse_browser_emulation;
 use crate::transport::types::{
-    RequestOptions, Response, WebSocketConnectOptions, WebSocketConnection,
+    CertificateAuthorityOptions, DnsOptions, RequestOptions, Response, TlsIdentityOptions,
+    WebSocketConnectOptions, WebSocketConnection,
 };
 use neon::prelude::*;
+use neon::types::JsBuffer;
+use neon::types::buffer::TypedArray;
 
 pub(crate) fn js_value_to_string_array(
     cx: &mut FunctionContext,
@@ -85,13 +88,19 @@ pub(crate) fn js_object_to_request_options(
 
     let body = obj
         .get_opt(cx, "body")?
-        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
-        .map(|v| v.value(cx));
+        .map(|value| js_value_to_bytes(cx, value))
+        .transpose()?;
 
     let proxy = obj
         .get_opt(cx, "proxy")?
         .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
         .map(|v| v.value(cx));
+    let disable_system_proxy = obj
+        .get_opt(cx, "disableSystemProxy")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsBoolean, _>(cx).ok())
+        .map(|v| v.value(cx))
+        .unwrap_or(false);
+    let dns = js_object_to_dns_options(cx, obj)?;
 
     let timeout = obj
         .get_opt(cx, "timeout")?
@@ -110,6 +119,8 @@ pub(crate) fn js_object_to_request_options(
         .and_then(|v: Handle<JsValue>| v.downcast::<JsBoolean, _>(cx).ok())
         .map(|v| v.value(cx))
         .unwrap_or(true);
+    let tls_identity = js_object_to_tls_identity_options(cx, obj)?;
+    let certificate_authority = js_object_to_certificate_authority_options(cx, obj)?;
 
     Ok(RequestOptions {
         url,
@@ -119,9 +130,13 @@ pub(crate) fn js_object_to_request_options(
         method,
         body,
         proxy,
+        disable_system_proxy,
+        dns,
         timeout,
         disable_default_headers,
         compress,
+        tls_identity,
+        certificate_authority,
     })
 }
 
@@ -165,6 +180,12 @@ pub(crate) fn js_object_to_websocket_options(
         .get_opt(cx, "proxy")?
         .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
         .map(|v| v.value(cx));
+    let disable_system_proxy = obj
+        .get_opt(cx, "disableSystemProxy")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsBoolean, _>(cx).ok())
+        .map(|v| v.value(cx))
+        .unwrap_or(false);
+    let dns = js_object_to_dns_options(cx, obj)?;
 
     let timeout = obj
         .get_opt(cx, "timeout")?
@@ -186,6 +207,8 @@ pub(crate) fn js_object_to_websocket_options(
             }
         }
     }
+    let tls_identity = js_object_to_tls_identity_options(cx, obj)?;
+    let certificate_authority = js_object_to_certificate_authority_options(cx, obj)?;
 
     Ok(WebSocketConnectOptions {
         url,
@@ -193,10 +216,150 @@ pub(crate) fn js_object_to_websocket_options(
         headers,
         orig_headers,
         proxy,
+        disable_system_proxy,
+        dns,
         timeout,
         disable_default_headers,
         protocols,
+        tls_identity,
+        certificate_authority,
     })
+}
+
+fn js_value_to_bytes(cx: &mut FunctionContext, value: Handle<JsValue>) -> NeonResult<Vec<u8>> {
+    let buffer = value.downcast::<JsBuffer, _>(cx).or_throw(cx)?;
+    Ok(buffer.as_slice(cx).to_vec())
+}
+
+fn js_object_to_tls_identity_options(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<Option<TlsIdentityOptions>> {
+    let Some(identity_obj) = obj
+        .get_opt(cx, "tlsIdentity")?
+        .map(|value: Handle<JsValue>| value.downcast::<JsObject, _>(cx).or_throw(cx))
+        .transpose()?
+    else {
+        return Ok(None);
+    };
+
+    if let Some(archive) = identity_obj
+        .get_opt(cx, "pfx")?
+        .map(|value| js_value_to_bytes(cx, value))
+        .transpose()?
+    {
+        let passphrase = identity_obj
+            .get_opt(cx, "passphrase")?
+            .and_then(|value: Handle<JsValue>| value.downcast::<JsString, _>(cx).ok())
+            .map(|value| value.value(cx));
+
+        return Ok(Some(TlsIdentityOptions::Pfx {
+            archive,
+            passphrase,
+        }));
+    }
+
+    let Some(cert) = identity_obj
+        .get_opt(cx, "cert")?
+        .map(|value| js_value_to_bytes(cx, value))
+        .transpose()?
+    else {
+        return cx.throw_type_error("tlsIdentity.cert must be a Buffer");
+    };
+
+    let Some(key) = identity_obj
+        .get_opt(cx, "key")?
+        .map(|value| js_value_to_bytes(cx, value))
+        .transpose()?
+    else {
+        return cx.throw_type_error("tlsIdentity.key must be a Buffer");
+    };
+
+    Ok(Some(TlsIdentityOptions::Pem { cert, key }))
+}
+
+fn js_object_to_certificate_authority_options(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<Option<CertificateAuthorityOptions>> {
+    let Some(authority_obj) = obj
+        .get_opt(cx, "ca")?
+        .map(|value: Handle<JsValue>| value.downcast::<JsObject, _>(cx).or_throw(cx))
+        .transpose()?
+    else {
+        return Ok(None);
+    };
+
+    let certs_array = authority_obj.get::<JsArray, _, _>(cx, "certs")?;
+    let certs = certs_array
+        .to_vec(cx)?
+        .into_iter()
+        .map(|value| js_value_to_bytes(cx, value))
+        .collect::<NeonResult<Vec<_>>>()?;
+    let include_default_roots = authority_obj
+        .get_opt(cx, "includeDefaultRoots")?
+        .and_then(|value: Handle<JsValue>| value.downcast::<JsBoolean, _>(cx).ok())
+        .map(|value| value.value(cx))
+        .unwrap_or(false);
+
+    Ok(Some(CertificateAuthorityOptions {
+        certs,
+        include_default_roots,
+    }))
+}
+
+fn js_object_to_dns_options(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<Option<DnsOptions>> {
+    let Some(dns_obj) = obj
+        .get_opt(cx, "dns")?
+        .map(|value: Handle<JsValue>| value.downcast::<JsObject, _>(cx).or_throw(cx))
+        .transpose()?
+    else {
+        return Ok(None);
+    };
+
+    let servers = dns_obj
+        .get_opt(cx, "servers")?
+        .map(|value| js_value_to_string_array(cx, value))
+        .transpose()?
+        .unwrap_or_default();
+
+    let hosts = dns_obj
+        .get_opt(cx, "hosts")?
+        .map(|value: Handle<JsValue>| value.downcast::<JsObject, _>(cx).or_throw(cx))
+        .transpose()?
+        .map(|hosts_obj| {
+            let property_names = hosts_obj.get_own_property_names(cx)?;
+            let mut entries = Vec::with_capacity(property_names.len(cx) as usize);
+
+            for key in property_names.to_vec(cx)? {
+                let hostname = key.downcast::<JsString, _>(cx).or_throw(cx)?.value(cx);
+                let values = hosts_obj
+                    .get::<JsArray, _, _>(cx, hostname.as_str())?
+                    .to_vec(cx)?
+                    .into_iter()
+                    .map(|value| {
+                        value
+                            .downcast::<JsString, _>(cx)
+                            .or_throw(cx)
+                            .map(|value| value.value(cx))
+                    })
+                    .collect::<NeonResult<Vec<_>>>()?;
+                entries.push((hostname, values));
+            }
+
+            Ok(entries)
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    if servers.is_empty() && hosts.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(DnsOptions { servers, hosts }))
 }
 
 pub(crate) fn response_to_js_object<'a, C: Context<'a>>(

@@ -1,7 +1,9 @@
 use crate::store::body_store::store_body;
 use crate::store::runtime::runtime;
 use crate::transport::cookies::parse_cookie_pair;
+use crate::transport::dns::configure_client_builder as configure_dns;
 use crate::transport::headers::build_orig_header_map;
+use crate::transport::tls::configure_client_builder;
 use crate::transport::types::{RequestOptions, Response};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -13,37 +15,59 @@ pub fn execute_request(options: RequestOptions) -> Result<Response> {
 }
 
 pub async fn make_request(options: RequestOptions) -> Result<Response> {
+    let RequestOptions {
+        url,
+        emulation,
+        headers,
+        orig_headers,
+        method,
+        body,
+        proxy,
+        disable_system_proxy,
+        dns,
+        timeout,
+        disable_default_headers,
+        compress,
+        tls_identity,
+        certificate_authority,
+    } = options;
+
     let mut client_builder = wreq::Client::builder()
-        .emulation(options.emulation)
+        .emulation(emulation)
         .cookie_store(true);
 
-    if let Some(proxy_url) = &options.proxy {
+    if disable_system_proxy {
+        client_builder = client_builder.no_proxy();
+    } else if let Some(proxy_url) = &proxy {
         let proxy = wreq::Proxy::all(proxy_url).context("Failed to create proxy")?;
         client_builder = client_builder.proxy(proxy);
     }
 
-    let orig_headers = build_orig_header_map(&options.orig_headers);
+    client_builder = configure_dns(client_builder, dns)?;
+    client_builder = configure_client_builder(client_builder, tls_identity, certificate_authority)?;
+
+    let orig_headers = build_orig_header_map(&orig_headers);
     let client = client_builder
         .build()
         .context("Failed to build HTTP client")?;
 
-    let method = if options.method.is_empty() {
+    let method = if method.is_empty() {
         "GET"
     } else {
-        &options.method
+        &method
     };
 
     let mut request = match method.to_uppercase().as_str() {
-        "GET" => client.get(&options.url),
-        "POST" => client.post(&options.url),
-        "PUT" => client.put(&options.url),
-        "DELETE" => client.delete(&options.url),
-        "PATCH" => client.patch(&options.url),
-        "HEAD" => client.head(&options.url),
+        "GET" => client.get(&url),
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        "PATCH" => client.patch(&url),
+        "HEAD" => client.head(&url),
         _ => return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method)),
     };
 
-    for (key, value) in &options.headers {
+    for (key, value) in &headers {
         request = request.header(key, value);
     }
 
@@ -51,21 +75,22 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
         request = request.orig_headers(orig_headers);
     }
 
-    if let Some(body) = options.body {
+    if let Some(body) = body {
         request = request.body(body);
     }
 
-    request = request.timeout(Duration::from_millis(options.timeout));
+    request = request.timeout(Duration::from_millis(timeout));
     request = request.redirect(redirect::Policy::none());
-    request = request.default_headers(!options.disable_default_headers);
-    request = request.gzip(options.compress);
-    request = request.brotli(options.compress);
-    request = request.deflate(options.compress);
+    request = request.default_headers(!disable_default_headers);
+    request = request.gzip(compress);
+    request = request.brotli(compress);
+    request = request.zstd(compress);
+    request = request.deflate(compress);
 
     let response = request
         .send()
         .await
-        .with_context(|| format!("{} {}", method, options.url))?;
+        .with_context(|| format!("{} {}", method, url))?;
 
     let status = response.status().as_u16();
     let final_url = response.uri().to_string();

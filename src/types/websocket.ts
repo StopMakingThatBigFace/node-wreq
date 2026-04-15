@@ -1,9 +1,12 @@
 import type {
   BrowserProfile,
+  CertificateAuthority,
   CookieJar,
+  DnsOptions,
   HeadersInit,
   Http1Options,
   Http2Options,
+  TlsIdentity,
   TlsOptions,
 } from './shared';
 import type { HeaderTuple } from './shared';
@@ -12,15 +15,17 @@ export type WebSocketBinaryType = 'blob' | 'arraybuffer';
 
 export interface WebSocketInit {
   headers?: HeadersInit;
-  keepOriginalHeaderNames?: boolean;
   baseURL?: string;
   query?: Record<string, string | number | boolean | null | undefined>;
   browser?: BrowserProfile;
-  proxy?: string;
+  proxy?: string | false;
+  dns?: DnsOptions;
   timeout?: number;
   cookieJar?: CookieJar;
   disableDefaultHeaders?: boolean;
   tlsOptions?: TlsOptions;
+  tlsIdentity?: TlsIdentity;
+  ca?: CertificateAuthority;
   http1Options?: Http1Options;
   http2Options?: Http2Options;
   protocols?: string | string[];
@@ -34,8 +39,12 @@ export interface NativeWebSocketConnectOptions {
   browser?: BrowserProfile;
   emulationJson?: string;
   proxy?: string;
+  disableSystemProxy?: boolean;
+  dns?: import('./native').NativeDnsOptions;
   timeout?: number;
   disableDefaultHeaders?: boolean;
+  tlsIdentity?: import('./native').NativeTlsIdentity;
+  ca?: import('./native').NativeCertificateAuthority;
   protocols: string[];
 }
 
