@@ -18,6 +18,7 @@
     "build": "npm run build:rust && npm run build:ts",
     "build:rust": "napi build --platform --release --cargo-cwd rust rust",
     "build:ts": "node ./scripts/generate-browser-profiles.mjs && tsc && node ./scripts/postbuild.mjs",
+    "deps:wreq": "node ./scripts/update-wreq-upstream.mjs",
     "prepare": "node ./scripts/install-git-hooks.mjs",
     "prepare:publish:main": "node ./scripts/prepare-main-package.mjs",
     "prepare:publish:platform": "node ./scripts/prepare-platform-package.mjs",

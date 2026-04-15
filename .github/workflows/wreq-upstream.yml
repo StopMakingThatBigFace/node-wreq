@@ -1,0 +1,73 @@
+name: 📦 Sync wreq Upstream
+
+on:
+  schedule:
+    - cron: "15 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: monitor-wreq-upstream
+  cancel-in-progress: false
+
+jobs:
+  bump-wreq:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check crates.io for upstream wreq releases
+        run: node ./scripts/update-wreq-upstream.mjs
+
+      - name: Detect dependency changes
+        id: changes
+        run: |
+          if git diff --quiet -- rust/Cargo.toml rust/Cargo.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.changes.outputs.changed == 'true'
+        run: npm ci
+
+      - name: Run test suite
+        if: steps.changes.outputs.changed == 'true'
+        run: npm test
+
+      - name: Create pull request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/update-wreq-upstream
+          delete-branch: true
+          commit-message: "chore: bump upstream wreq crates"
+          title: "chore: bump upstream wreq crates"
+          body: |
+            Automated upstream bump for the Rust crates.
+
+            This workflow checks `crates.io` for the latest published `max_version` of:
+            - `wreq`
+            - `wreq-util`
+          labels: |
+            dependencies
+          add-paths: |
+            rust/Cargo.toml
+            rust/Cargo.lock
