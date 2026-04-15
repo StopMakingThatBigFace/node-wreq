@@ -163,6 +163,34 @@ class WreqClient implements Client {
     return this.fetch(input, { ...init, method: 'POST', body });
   }
 
+  async put(
+    input: RequestInput,
+    body?: WreqInit['body'],
+    init?: Omit<WreqInit, 'method' | 'body'>
+  ) {
+    return this.fetch(input, { ...init, method: 'PUT', body });
+  }
+
+  async patch(
+    input: RequestInput,
+    body?: WreqInit['body'],
+    init?: Omit<WreqInit, 'method' | 'body'>
+  ) {
+    return this.fetch(input, { ...init, method: 'PATCH', body });
+  }
+
+  async delete(input: RequestInput, init?: Omit<WreqInit, 'method'>) {
+    return this.fetch(input, { ...init, method: 'DELETE' });
+  }
+
+  async head(input: RequestInput, init?: Omit<WreqInit, 'method'>) {
+    return this.fetch(input, { ...init, method: 'HEAD' });
+  }
+
+  async options(input: RequestInput, init?: Omit<WreqInit, 'method'>) {
+    return this.fetch(input, { ...init, method: 'OPTIONS' });
+  }
+
   extend(defaults: ClientDefaults): Client {
     return new WreqClient(mergeDefaults(this.defaults, defaults));
   }

@@ -1,6 +1,15 @@
 import { serializeEmulationOptions } from '../config/emulation';
-import { normalizeDnsOptions, normalizeProxyOptions } from '../config/network';
-import { normalizeCertificateAuthority, normalizeTlsIdentity } from '../config/tls';
+import {
+  normalizeDnsOptions,
+  normalizeLocalBindOptions,
+  normalizeProxyOptions,
+} from '../config/network';
+import {
+  normalizeCertificateAuthority,
+  normalizeTlsDanger,
+  normalizeTlsDebug,
+  normalizeTlsIdentity,
+} from '../config/tls';
 import { WebSocketError } from '../errors';
 import { loadCookiesIntoHeaders } from '../http/pipeline/cookies';
 import {
@@ -36,6 +45,43 @@ function resolveNativeTimeout(
   }
 
   return { timeout: timeout === 0 ? 0 : Math.max(1, Math.ceil(timeout)) };
+}
+
+function resolveNativeWebSocketSize(
+  value: number | undefined,
+  name: 'maxFrameSize' | 'maxMessageSize'
+): Partial<
+  Pick<import('../types').NativeWebSocketConnectOptions, 'maxFrameSize' | 'maxMessageSize'>
+> {
+  if (value === undefined) {
+    return {};
+  }
+
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new TypeError(`${name} must be a finite positive number`);
+  }
+
+  return { [name]: Math.max(1, Math.ceil(value)) };
+}
+
+function resolveNativeWebSocketBufferSize(
+  value: number | undefined,
+  name: 'readBufferSize' | 'writeBufferSize' | 'maxWriteBufferSize'
+): Partial<
+  Pick<
+    import('../types').NativeWebSocketConnectOptions,
+    'readBufferSize' | 'writeBufferSize' | 'maxWriteBufferSize'
+  >
+> {
+  if (value === undefined) {
+    return {};
+  }
+
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new TypeError(`${name} must be a finite positive number`);
+  }
+
+  return { [name]: Math.max(1, Math.ceil(value)) };
 }
 
 type OpenHandler = ((event: Event) => void) | null;
@@ -236,6 +282,7 @@ export class WebSocket extends EventTarget {
     await loadCookiesIntoHeaders(init.cookieJar, this.url, headers);
 
     try {
+      const localBind = normalizeLocalBindOptions(init);
       const { proxy, disableSystemProxy } = normalizeProxyOptions(init.proxy);
       const connection = await nativeWebSocketConnect({
         url: this.url,
@@ -250,7 +297,17 @@ export class WebSocket extends EventTarget {
         disableDefaultHeaders: init.disableDefaultHeaders ?? false,
         tlsIdentity: normalizeTlsIdentity(init.tlsIdentity),
         ca: normalizeCertificateAuthority(init.ca),
+        tlsDebug: normalizeTlsDebug(init.tlsDebug),
+        tlsDanger: normalizeTlsDanger(init.tlsDanger),
         protocols,
+        forceHttp2: init.forceHttp2,
+        acceptUnmaskedFrames: init.acceptUnmaskedFrames,
+        ...resolveNativeWebSocketBufferSize(init.readBufferSize, 'readBufferSize'),
+        ...resolveNativeWebSocketBufferSize(init.writeBufferSize, 'writeBufferSize'),
+        ...resolveNativeWebSocketBufferSize(init.maxWriteBufferSize, 'maxWriteBufferSize'),
+        ...resolveNativeWebSocketSize(init.maxFrameSize, 'maxFrameSize'),
+        ...resolveNativeWebSocketSize(init.maxMessageSize, 'maxMessageSize'),
+        ...localBind,
       });
 
       this.#handle = connection.handle;

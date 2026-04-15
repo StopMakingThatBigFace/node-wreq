@@ -106,6 +106,23 @@ describe('transport features', () => {
     );
   });
 
+  test('should apply readTimeout independently from total timeout', async () => {
+    const response = await fetch(
+      `${getBaseUrl()}/stream/slow?chunks=3&chunkBytes=1024&delayMs=40`,
+      {
+        timeout: 0,
+        readTimeout: 15,
+      }
+    );
+
+    await assert.rejects(
+      async () => {
+        await response.arrayBuffer();
+      },
+      (error: unknown) => error instanceof Error && error.name === 'TimeoutError'
+    );
+  });
+
   test('should support per-request DNS host overrides', async () => {
     const target = new URL(`${getBaseUrl()}/headers/raw`);
 

@@ -23,5 +23,27 @@ export interface Client {
     body?: BodyInit | null,
     init?: Omit<WreqInit, 'method' | 'body'>
   ): Promise<import('../http/response').Response>;
+  put(
+    input: RequestInput,
+    body?: BodyInit | null,
+    init?: Omit<WreqInit, 'method' | 'body'>
+  ): Promise<import('../http/response').Response>;
+  patch(
+    input: RequestInput,
+    body?: BodyInit | null,
+    init?: Omit<WreqInit, 'method' | 'body'>
+  ): Promise<import('../http/response').Response>;
+  delete(
+    input: RequestInput,
+    init?: Omit<WreqInit, 'method'>
+  ): Promise<import('../http/response').Response>;
+  head(
+    input: RequestInput,
+    init?: Omit<WreqInit, 'method'>
+  ): Promise<import('../http/response').Response>;
+  options(
+    input: RequestInput,
+    init?: Omit<WreqInit, 'method'>
+  ): Promise<import('../http/response').Response>;
   extend(defaults: ClientDefaults): Client;
 }

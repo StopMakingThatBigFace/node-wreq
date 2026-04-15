@@ -1,6 +1,16 @@
+import type { Buffer } from 'node:buffer';
+
 export type { BrowserProfile } from '../config/generated/browser-profiles';
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD';
+export type HttpMethod =
+  | 'GET'
+  | 'POST'
+  | 'PUT'
+  | 'DELETE'
+  | 'PATCH'
+  | 'HEAD'
+  | 'OPTIONS'
+  | (string & {});
 
 export type HeaderTuple = [string, string];
 export type TlsBinaryInput = Buffer | ArrayBuffer | ArrayBufferView;
@@ -16,6 +26,11 @@ export type BodyInit = string | URLSearchParams | FormData | Buffer | ArrayBuffe
 export interface DnsOptions {
   servers?: string | string[];
   hosts?: Record<string, string | string[]>;
+}
+
+export interface LocalAddresses {
+  ipv4?: string;
+  ipv6?: string;
 }
 
 export type AlpnProtocol = 'HTTP1' | 'HTTP2' | 'HTTP3';
@@ -88,6 +103,22 @@ export interface TlsIdentityPfx {
 }
 
 export type TlsIdentity = TlsIdentityPem | TlsIdentityPfx;
+
+export interface TlsDebugOptions {
+  peerCertificates?: boolean;
+  keylog?: true | { path: string };
+}
+
+export interface TlsDangerOptions {
+  certVerification?: boolean;
+  verifyHostname?: boolean;
+  sni?: boolean;
+}
+
+export interface TlsPeerInfo {
+  peerCertificate?: Buffer;
+  peerCertificateChain?: Buffer[];
+}
 
 export interface CertificateAuthority {
   cert: TlsDataInput | TlsDataInput[];

@@ -147,6 +147,47 @@ export function setupLocalTestServer() {
           return;
         }
 
+        if (url.pathname === '/connection/delay') {
+          const delayMs = Number(url.searchParams.get('ms') ?? '50');
+
+          setTimeout(() => {
+            response.writeHead(200, {
+              'content-type': 'application/json',
+            });
+            response.end(JSON.stringify({ delayedConnection: true }));
+          }, delayMs);
+
+          return;
+        }
+
+        if (url.pathname === '/stream/slow') {
+          const chunks = Math.max(1, Number(url.searchParams.get('chunks') ?? '3'));
+          const chunkBytes = Math.max(1, Number(url.searchParams.get('chunkBytes') ?? '1024'));
+          const delayMs = Math.max(0, Number(url.searchParams.get('delayMs') ?? '25'));
+          let sent = 0;
+
+          response.writeHead(200, {
+            'content-type': 'application/octet-stream',
+          });
+
+          const sendChunk = () => {
+            response.write(Buffer.alloc(chunkBytes, sent % 251));
+            sent += 1;
+
+            if (sent >= chunks) {
+              response.end();
+
+              return;
+            }
+
+            setTimeout(sendChunk, delayMs);
+          };
+
+          sendChunk();
+
+          return;
+        }
+
         if (url.pathname === '/cookies/set') {
           sendJson(
             response,

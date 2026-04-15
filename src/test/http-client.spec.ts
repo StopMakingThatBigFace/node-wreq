@@ -133,6 +133,92 @@ describe('http client', () => {
         return true;
       }
     );
+
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/headers/raw`, {
+          connectTimeout: Number.NaN,
+        });
+      },
+      (error: unknown) => error instanceof Error && error.name === 'RequestError'
+    );
+  });
+
+  test('should support arbitrary HTTP methods', async () => {
+    const customResponse = await fetch(`${getBaseUrl()}/body/echo`, {
+      method: 'PROPFIND',
+    });
+    const customBody = await customResponse.json<{ method: string }>();
+
+    assert.strictEqual(customBody.method, 'PROPFIND');
+  });
+
+  test('should support client options/put/patch/delete/head helpers', async () => {
+    const client = createClient({
+      baseURL: getBaseUrl(),
+    });
+
+    const optionsResponse = await client.options('/body/echo');
+    const putResponse = await client.put('/body/echo', 'put-body');
+    const patchResponse = await client.patch('/body/echo', 'patch-body');
+    const deleteResponse = await client.delete('/body/echo');
+    const headResponse = await client.head('/headers/raw');
+
+    assert.strictEqual((await optionsResponse.json<{ method: string }>()).method, 'OPTIONS');
+    assert.strictEqual((await putResponse.json<{ method: string; body: string }>()).method, 'PUT');
+    assert.strictEqual(
+      (await patchResponse.json<{ method: string; body: string }>()).body,
+      'patch-body'
+    );
+    assert.strictEqual((await deleteResponse.json<{ method: string }>()).method, 'DELETE');
+    assert.strictEqual(headResponse.status, 200);
+  });
+
+  test('should support http1Only and reject conflicting protocol forcing', async () => {
+    const response = await fetch(`${getBaseUrl()}/headers/raw`, {
+      http1Only: true,
+    });
+
+    assert.strictEqual(response.status, 200);
+
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/headers/raw`, {
+          http1Only: true,
+          http2Only: true,
+        });
+      },
+      (error: unknown) =>
+        error instanceof Error &&
+        error.name === 'RequestError' &&
+        (error as Error).message.includes('http1Only and http2Only cannot both be true')
+    );
+  });
+
+  test('should reject invalid local bind options', async () => {
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/headers/raw`, {
+          localAddress: 'not-an-ip',
+        });
+      },
+      (error: unknown) =>
+        error instanceof Error &&
+        error.name === 'RequestError' &&
+        error.message.includes('localAddress must be a valid IPv4 or IPv6 address')
+    );
+
+    await assert.rejects(
+      async () => {
+        await fetch(`${getBaseUrl()}/headers/raw`, {
+          interface: '   ',
+        });
+      },
+      (error: unknown) =>
+        error instanceof Error &&
+        error.name === 'RequestError' &&
+        error.message.includes('interface must be a non-empty string')
+    );
   });
 
   test('should support fetch-style requests', async () => {

@@ -144,8 +144,18 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
         timeout,
         disable_default_headers,
         protocols,
+        force_http2,
+        read_buffer_size,
+        write_buffer_size,
+        max_write_buffer_size,
+        accept_unmasked_frames,
+        max_frame_size,
+        max_message_size,
+        local_bind,
         tls_identity,
         certificate_authority,
+        tls_debug,
+        tls_danger,
     } = options;
 
     let mut client_builder = wreq::Client::builder()
@@ -164,7 +174,57 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
     }
 
     client_builder = configure_dns(client_builder, dns)?;
-    client_builder = configure_client_builder(client_builder, tls_identity, certificate_authority)?;
+    client_builder = configure_client_builder(
+        client_builder,
+        tls_identity,
+        certificate_authority,
+        tls_debug,
+        tls_danger,
+    )?;
+
+    if let Some(local_bind) = local_bind {
+        if let Some(address) = local_bind.address {
+            client_builder = client_builder.local_address(address);
+        }
+
+        if local_bind.ipv4.is_some() || local_bind.ipv6.is_some() {
+            client_builder = client_builder.local_addresses(local_bind.ipv4, local_bind.ipv6);
+        }
+
+        if let Some(interface) = local_bind.interface {
+            #[cfg(any(
+                target_os = "android",
+                target_os = "fuchsia",
+                target_os = "illumos",
+                target_os = "ios",
+                target_os = "linux",
+                target_os = "macos",
+                target_os = "solaris",
+                target_os = "tvos",
+                target_os = "visionos",
+                target_os = "watchos",
+            ))]
+            {
+                client_builder = client_builder.interface(interface);
+            }
+
+            #[cfg(not(any(
+                target_os = "android",
+                target_os = "fuchsia",
+                target_os = "illumos",
+                target_os = "ios",
+                target_os = "linux",
+                target_os = "macos",
+                target_os = "solaris",
+                target_os = "tvos",
+                target_os = "visionos",
+                target_os = "watchos",
+            )))]
+            {
+                let _ = interface;
+            }
+        }
+    }
 
     let client = client_builder
         .build()
@@ -181,6 +241,34 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
     }
 
     request = request.default_headers(!disable_default_headers);
+
+    if force_http2 {
+        request = request.force_http2();
+    }
+
+    if let Some(read_buffer_size) = read_buffer_size {
+        request = request.read_buffer_size(read_buffer_size);
+    }
+
+    if let Some(write_buffer_size) = write_buffer_size {
+        request = request.write_buffer_size(write_buffer_size);
+    }
+
+    if let Some(max_write_buffer_size) = max_write_buffer_size {
+        request = request.max_write_buffer_size(max_write_buffer_size);
+    }
+
+    if let Some(accept_unmasked_frames) = accept_unmasked_frames {
+        request = request.accept_unmasked_frames(accept_unmasked_frames);
+    }
+
+    if let Some(max_frame_size) = max_frame_size {
+        request = request.max_frame_size(max_frame_size);
+    }
+
+    if let Some(max_message_size) = max_message_size {
+        request = request.max_message_size(max_message_size);
+    }
 
     if !protocols.is_empty() {
         request = request.protocols(protocols.iter().cloned());
