@@ -228,7 +228,3 @@ export class Request {
     return this.#readBodyBytes();
   }
 }
-
-export function isWreqRequest(value: unknown): value is Request {
-  return value instanceof Request;
-}

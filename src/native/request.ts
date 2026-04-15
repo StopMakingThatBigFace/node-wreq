@@ -69,10 +69,6 @@ export async function nativeReadBodyChunk(
   return getBinding().readBodyChunk(handle, size);
 }
 
-export async function nativeReadBodyAll(handle: number): Promise<Uint8Array> {
-  return getBinding().readBodyAll(handle);
-}
-
 export function nativeCancelBody(handle: number): boolean {
   return getBinding().cancelBody(handle);
 }

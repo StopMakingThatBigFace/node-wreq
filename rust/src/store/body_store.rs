@@ -65,28 +65,6 @@ pub fn read_body_chunk(handle: u64, _size: usize) -> Result<(Vec<u8>, bool)> {
     Ok((chunk.to_vec(), false))
 }
 
-pub fn read_body_all(handle: u64) -> Result<Vec<u8>> {
-    let Some(body) = remove_body(handle) else {
-        return Err(anyhow::anyhow!("Unknown body handle: {}", handle));
-    };
-
-    runtime().block_on(async move {
-        let mut body = body.lock().await;
-        let mut bytes = Vec::new();
-
-        while let Some(chunk) = body
-            .response
-            .chunk()
-            .await
-            .context("Failed to read response body chunk")?
-        {
-            bytes.extend_from_slice(&chunk);
-        }
-
-        Ok::<Vec<u8>, anyhow::Error>(bytes)
-    })
-}
-
 pub fn cancel_body(handle: u64) -> bool {
     remove_body(handle).is_some()
 }

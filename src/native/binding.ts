@@ -26,7 +26,6 @@ export type NativeBinding = {
     chunk: Buffer;
     done: boolean;
   }>;
-  readBodyAll: (handle: number) => Promise<Buffer>;
   cancelBody: (handle: number) => boolean;
   getProfiles: () => string[];
 };
