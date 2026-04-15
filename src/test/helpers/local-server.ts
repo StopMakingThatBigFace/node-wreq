@@ -113,9 +113,11 @@ export function setupLocalTestServer() {
         }
 
         if (url.pathname === '/timings/delay') {
+          const delayMs = Number(url.searchParams.get('ms') ?? '50');
+
           setTimeout(() => {
             sendJson(response, 200, { delayed: true });
-          }, 50);
+          }, delayMs);
 
           return;
         }

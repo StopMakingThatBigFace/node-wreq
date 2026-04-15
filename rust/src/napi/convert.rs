@@ -5,8 +5,18 @@ use crate::transport::types::{
     WebSocketConnectOptions, WebSocketConnection,
 };
 use neon::prelude::*;
-use neon::types::JsBuffer;
 use neon::types::buffer::TypedArray;
+use neon::types::JsBuffer;
+
+fn js_value_to_timeout_ms(cx: &mut FunctionContext, value: Handle<JsValue>) -> NeonResult<u64> {
+    let value = value.downcast::<JsNumber, _>(cx).or_throw(cx)?.value(cx);
+
+    if !value.is_finite() || value < 0.0 {
+        return cx.throw_type_error("timeout must be a finite non-negative number");
+    }
+
+    Ok(if value == 0.0 { 0 } else { value.ceil() as u64 })
+}
 
 pub(crate) fn js_value_to_string_array(
     cx: &mut FunctionContext,
@@ -101,12 +111,16 @@ pub(crate) fn js_object_to_request_options(
         .map(|v| v.value(cx))
         .unwrap_or(false);
     let dns = js_object_to_dns_options(cx, obj)?;
-
     let timeout = obj
         .get_opt(cx, "timeout")?
-        .and_then(|v: Handle<JsValue>| v.downcast::<JsNumber, _>(cx).ok())
-        .map(|v| v.value(cx) as u64)
-        .unwrap_or(30000);
+        .map(|v| js_value_to_timeout_ms(cx, v))
+        .transpose()?;
+
+    let timeout = match timeout {
+        Some(0) => None,
+        Some(timeout) => Some(timeout),
+        None => Some(30000),
+    };
 
     let disable_default_headers = obj
         .get_opt(cx, "disableDefaultHeaders")?
@@ -186,12 +200,16 @@ pub(crate) fn js_object_to_websocket_options(
         .map(|v| v.value(cx))
         .unwrap_or(false);
     let dns = js_object_to_dns_options(cx, obj)?;
-
     let timeout = obj
         .get_opt(cx, "timeout")?
-        .and_then(|v: Handle<JsValue>| v.downcast::<JsNumber, _>(cx).ok())
-        .map(|v| v.value(cx) as u64)
-        .unwrap_or(30000);
+        .map(|v| js_value_to_timeout_ms(cx, v))
+        .transpose()?;
+
+    let timeout = match timeout {
+        Some(0) => None,
+        Some(timeout) => Some(timeout),
+        None => Some(30000),
+    };
 
     let disable_default_headers = obj
         .get_opt(cx, "disableDefaultHeaders")?

@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { Buffer } from 'node:buffer';
 import { describe, test } from 'node:test';
-import { fetch } from '../node-wreq';
+import { fetch, Request } from '../node-wreq';
 import { setupLocalTestServer } from './helpers/local-server';
 import { setupProxyTestServer } from './helpers/proxy-server';
 
@@ -40,6 +40,29 @@ describe('transport features', () => {
       body.body.includes('hello multipart'),
       'multipart payload should include file contents'
     );
+  });
+
+  test('should preserve multipart request bodies when cloning requests', async () => {
+    const formData = new FormData();
+
+    formData.append('alpha', '1');
+    formData.append(
+      'upload',
+      new File([Buffer.from('hello multipart')], 'hello.txt', { type: 'text/plain' })
+    );
+
+    const request = new Request(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const cloned = request.clone();
+    const response = await fetch(cloned);
+    const body = await response.json<{ body: string }>();
+
+    assert.ok(body.body.includes('name="alpha"'));
+    assert.ok(body.body.includes('name="upload"'));
+    assert.ok(body.body.includes('filename="hello.txt"'));
   });
 
   test('should decode response.text() using the declared charset', async () => {

@@ -147,7 +147,7 @@ npm run build:rust
 npm install
 
 # Clean and rebuild
-rm -rf rust/target
+npx rimraf rust/target
 npm run build:rust
 ```
 

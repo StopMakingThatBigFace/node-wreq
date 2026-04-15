@@ -150,8 +150,11 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
 
     let mut client_builder = wreq::Client::builder()
         .emulation(emulation)
-        .cookie_store(true)
-        .timeout(Duration::from_millis(timeout));
+        .cookie_store(true);
+
+    if let Some(timeout) = timeout {
+        client_builder = client_builder.timeout(Duration::from_millis(timeout));
+    }
 
     if disable_system_proxy {
         client_builder = client_builder.no_proxy();

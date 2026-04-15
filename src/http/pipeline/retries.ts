@@ -1,4 +1,4 @@
-import { normalizeMethod } from '../../native';
+import { normalizeMethod } from '../../native/index';
 import type { ResolvedRetryOptions, RetryDecisionContext } from '../../types';
 import { inferErrorCode } from './errors';
 

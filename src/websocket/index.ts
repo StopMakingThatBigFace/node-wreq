@@ -10,7 +10,7 @@ import {
   nativeWebSocketSendBinary,
   nativeWebSocketSendText,
   validateBrowserProfile,
-} from '../native';
+} from '../native/index';
 import type { WebSocketBinaryType, WebSocketInit } from '../types';
 import { CloseEvent } from './close-event';
 import { getSendByteLength, normalizeSendData, toMessageEventData } from './send-data';
@@ -23,6 +23,20 @@ import {
 } from './validation';
 
 const DEFAULT_TIMEOUT = 30_000;
+
+function resolveNativeTimeout(
+  timeout: number | undefined
+): Pick<import('../types').NativeWebSocketConnectOptions, 'timeout'> {
+  if (timeout === undefined) {
+    return { timeout: DEFAULT_TIMEOUT };
+  }
+
+  if (!Number.isFinite(timeout) || timeout < 0) {
+    throw new TypeError('timeout must be a finite non-negative number');
+  }
+
+  return { timeout: timeout === 0 ? 0 : Math.max(1, Math.ceil(timeout)) };
+}
 
 type OpenHandler = ((event: Event) => void) | null;
 type MessageHandler = ((event: MessageEvent) => void) | null;
@@ -232,7 +246,7 @@ export class WebSocket extends EventTarget {
         proxy,
         disableSystemProxy,
         dns: normalizeDnsOptions(init.dns),
-        timeout: init.timeout ?? DEFAULT_TIMEOUT,
+        ...resolveNativeTimeout(init.timeout),
         disableDefaultHeaders: init.disableDefaultHeaders ?? false,
         tlsIdentity: normalizeTlsIdentity(init.tlsIdentity),
         ca: normalizeCertificateAuthority(init.ca),

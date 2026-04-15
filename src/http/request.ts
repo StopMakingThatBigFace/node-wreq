@@ -84,6 +84,7 @@ export class Request {
     });
 
     cloned.#bodyBytes = cloneBytes(this.#bodyBytes);
+    cloned.#multipartBody = this.#multipartBody?.clone() ?? null;
 
     return cloned;
   }
@@ -226,8 +227,4 @@ export class Request {
 
     return this.#readBodyBytes();
   }
-}
-
-export function isWreqRequest(value: unknown): value is Request {
-  return value instanceof Request;
 }

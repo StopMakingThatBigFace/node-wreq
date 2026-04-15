@@ -3,7 +3,10 @@ use wreq::Emulation;
 
 #[derive(Debug, Clone)]
 pub enum TlsIdentityOptions {
-    Pem { cert: Vec<u8>, key: Vec<u8> },
+    Pem {
+        cert: Vec<u8>,
+        key: Vec<u8>,
+    },
     Pfx {
         archive: Vec<u8>,
         passphrase: Option<String>,
@@ -33,7 +36,7 @@ pub struct RequestOptions {
     pub proxy: Option<String>,
     pub disable_system_proxy: bool,
     pub dns: Option<DnsOptions>,
-    pub timeout: u64,
+    pub timeout: Option<u64>,
     pub disable_default_headers: bool,
     pub compress: bool,
     pub tls_identity: Option<TlsIdentityOptions>,
@@ -59,7 +62,7 @@ pub struct WebSocketConnectOptions {
     pub proxy: Option<String>,
     pub disable_system_proxy: bool,
     pub dns: Option<DnsOptions>,
-    pub timeout: u64,
+    pub timeout: Option<u64>,
     pub disable_default_headers: bool,
     pub protocols: Vec<String>,
     pub tls_identity: Option<TlsIdentityOptions>,

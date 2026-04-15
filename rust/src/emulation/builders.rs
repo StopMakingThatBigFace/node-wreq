@@ -264,7 +264,7 @@ fn build_settings_order(settings_order: Vec<String>) -> Result<SettingsOrder> {
 
     for setting in settings_order {
         let setting_id = parse_http2_setting_id(&setting)?;
-        if !seen.insert(setting_id.clone()) {
+        if !seen.insert(setting_id) {
             bail!("Duplicate emulation http2Options.settingsOrder entry: {setting}");
         }
         builder = builder.push(setting_id);

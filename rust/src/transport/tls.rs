@@ -1,8 +1,8 @@
 use crate::transport::types::{CertificateAuthorityOptions, TlsIdentityOptions};
 use anyhow::{Context, Result};
 use wreq::{
-    ClientBuilder,
     tls::{CertStore, Identity},
+    ClientBuilder,
 };
 
 pub fn configure_client_builder(

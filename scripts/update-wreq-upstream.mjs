@@ -24,7 +24,9 @@ async function fetchLatestVersion(crate) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${crate} metadata from crates.io: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Failed to fetch ${crate} metadata from crates.io: ${response.status} ${response.statusText}`
+    );
   }
 
   const payload = await response.json();
@@ -100,7 +102,9 @@ async function main() {
   await writeFile(manifestPath, manifest);
 
   for (const update of plannedUpdates) {
-    console.log(`Updating ${update.dependency}: ${update.currentVersion} -> ${update.latestVersion}`);
+    console.log(
+      `Updating ${update.dependency}: ${update.currentVersion} -> ${update.latestVersion}`
+    );
     updateLockfile(update.dependency, update.latestVersion);
   }
 }

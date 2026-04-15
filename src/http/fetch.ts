@@ -7,7 +7,7 @@ import {
   runBeforeRetryHooks,
   runInitHooks,
 } from '../hooks';
-import { normalizeMethod } from '../native';
+import { normalizeMethod } from '../native/index';
 import type { RedirectEntry, RequestInput, RetryDecisionContext, WreqInit } from '../types';
 import { loadCookiesIntoRequest, persistResponseCookies } from './pipeline/cookies';
 import { dispatchNativeRequest, reportStats } from './pipeline/dispatch';
@@ -61,7 +61,11 @@ export async function fetch(input: RequestInput, init?: WreqInit) {
 
       let response =
         shortCircuit ??
-        (await dispatchNativeRequest(await buildNativeRequest(request, options), startTime));
+        (await dispatchNativeRequest(
+          await buildNativeRequest(request, options),
+          startTime,
+          options.signal
+        ));
 
       if (shortCircuit) {
         response.setTimings({

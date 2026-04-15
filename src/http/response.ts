@@ -3,7 +3,7 @@ import { STATUS_CODES } from 'node:http';
 import { ReadableStream } from 'node:stream/web';
 import { TextDecoder } from 'node:util';
 import { Headers } from '../headers';
-import { nativeCancelBody, nativeReadBodyChunk } from '../native';
+import { nativeCancelBody, nativeReadBodyChunk } from '../native/index';
 import type {
   BodyInit,
   HeadersInit,

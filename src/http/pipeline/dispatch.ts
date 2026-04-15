@@ -1,5 +1,5 @@
-import { RequestError, TimeoutError } from '../../errors';
-import { nativeRequest } from '../../native';
+import { AbortError, RequestError, TimeoutError } from '../../errors';
+import { nativeRequest } from '../../native/index';
 import type { NativeRequestOptions, RequestStats, WreqInit } from '../../types';
 import { Response } from '../response';
 
@@ -16,9 +16,14 @@ export async function reportStats(
 
 export async function dispatchNativeRequest(
   options: NativeRequestOptions,
-  startTime: number
+  startTime: number,
+  signal?: AbortSignal | null
 ): Promise<Response> {
-  const nativeResponse = await nativeRequest(options).catch((error: unknown) => {
+  const nativeResponse = await nativeRequest(options, signal).catch((error: unknown) => {
+    if (error instanceof AbortError) {
+      throw error;
+    }
+
     const message = String(error);
     const lowered = message.toLowerCase();
 
@@ -32,7 +37,14 @@ export async function dispatchNativeRequest(
   const responseStart = Date.now();
 
   return new Response({
-    ...nativeResponse,
+    status: nativeResponse.status,
+    statusText: nativeResponse.statusText,
+    headers: nativeResponse.headers,
+    body: nativeResponse.body,
+    bodyHandle: nativeResponse.bodyHandle,
+    cookies: nativeResponse.cookies,
+    setCookies: nativeResponse.setCookies,
+    url: nativeResponse.url,
     timings: {
       startTime,
       responseStart,

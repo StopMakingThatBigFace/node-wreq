@@ -5,7 +5,7 @@ import { Headers } from './headers';
 import { fetch } from './http/fetch';
 import { Request } from './http/request';
 import { Response } from './http/response';
-import { getProfiles } from './native';
+import { getProfiles } from './native/index';
 import type {
   AfterResponseContext,
   AlpnProtocol,

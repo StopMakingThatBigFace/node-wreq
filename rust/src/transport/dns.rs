@@ -1,11 +1,11 @@
 use crate::transport::types::DnsOptions;
 use anyhow::{Context, Result};
 use hickory_resolver::{
-    TokioResolver,
     config::{LookupIpStrategy, NameServerConfig, NameServerConfigGroup, ResolverConfig},
     lookup_ip::LookupIpIntoIter,
     name_server::TokioConnectionProvider,
     proto::xfer::Protocol,
+    TokioResolver,
 };
 use std::net::{IpAddr, SocketAddr};
 use wreq::dns::{Addrs, Name, Resolve, Resolving};
