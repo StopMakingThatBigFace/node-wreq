@@ -67,12 +67,12 @@
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0",
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.39",
     "@types/ws": "^8.18.1",
-    "oxfmt": "^0.41.0",
-    "oxlint": "^1.56.0",
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.60.0",
     "typescript": "^5.0.0",
-    "ws": "^8.18.3"
+    "ws": "^8.20.0"
   },
   "engines": {
     "node": ">=20.0.0"
