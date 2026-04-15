@@ -18,6 +18,7 @@
     "build": "npm run build:rust && npm run build:ts",
     "build:rust": "napi build --platform --release --cargo-cwd rust rust",
     "build:ts": "node ./scripts/generate-browser-profiles.mjs && tsc && node ./scripts/postbuild.mjs",
+    "deps:wreq": "node ./scripts/update-wreq-upstream.mjs",
     "prepare": "node ./scripts/install-git-hooks.mjs",
     "prepare:publish:main": "node ./scripts/prepare-main-package.mjs",
     "prepare:publish:platform": "node ./scripts/prepare-platform-package.mjs",
@@ -67,15 +68,15 @@
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0",
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.39",
     "@types/ws": "^8.18.1",
-    "oxfmt": "^0.41.0",
-    "oxlint": "^1.56.0",
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.60.0",
     "typescript": "^5.0.0",
-    "ws": "^8.18.3"
+    "ws": "^8.20.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "os": [
     "darwin",

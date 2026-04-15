@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # HTTP client with browser impersonation
-wreq = { version = "6.0.0-rc.28", default-features = false, features = ["gzip", "brotli", "deflate", "socks", "cookies", "json", "webpki-roots", "ws"] }
+wreq = { version = "6.0.0-rc.28", default-features = false, features = ["gzip", "brotli", "deflate", "zstd", "socks", "cookies", "json", "charset", "multipart", "hickory-dns", "system-proxy", "webpki-roots", "ws"] }
 wreq-util = { version = "3.0.0-rc.10", features = ["emulation-rand", "emulation-serde"] }
 strum = "0.27.2"
 
@@ -26,6 +26,8 @@ thiserror = "1.0"
 
 # Async runtime (if needed)
 tokio = { version = "1.0", features = ["full"] }
+webpki-root-certs = "1.0.3"
+hickory-resolver = { version = "0.25.2", features = ["system-config"] }
 
 [profile.release]
 opt-level = 3

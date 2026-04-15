@@ -1,6 +1,7 @@
 import { Blob, Buffer } from 'node:buffer';
 import { STATUS_CODES } from 'node:http';
 import { ReadableStream } from 'node:stream/web';
+import { TextDecoder } from 'node:util';
 import { Headers } from '../headers';
 import { nativeCancelBody, nativeReadBodyChunk } from '../native';
 import type {
@@ -18,6 +19,27 @@ import { ResponseMeta } from './response-meta';
 type ResponseInitWithUrl = ResponseInit & {
   url?: string;
 };
+
+function resolveCharset(contentType: string | null): string {
+  if (!contentType) {
+    return 'utf-8';
+  }
+
+  const match = contentType.match(/charset\s*=\s*(?:"([^"]+)"|([^;]+))/i);
+  const label = (match?.[1] ?? match?.[2] ?? 'utf-8').trim();
+
+  return label || 'utf-8';
+}
+
+function decodeText(bytes: Uint8Array, contentType: string | null): string {
+  const charset = resolveCharset(contentType);
+
+  try {
+    return new TextDecoder(charset).decode(bytes);
+  } catch {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+}
 
 function toHeadersInit(headers: ResponseInit['headers'] | undefined): HeadersInit | undefined {
   if (headers === undefined) {
@@ -123,7 +145,7 @@ export class Response {
   }
 
   async text(): Promise<string> {
-    return Buffer.from(await this.#consumeBytes()).toString('utf8');
+    return decodeText(await this.#consumeBytes(), this.headers.get('content-type'));
   }
 
   async json<T = unknown>(): Promise<T> {

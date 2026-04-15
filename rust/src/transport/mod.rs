@@ -1,6 +1,8 @@
 mod cookies;
+mod dns;
 mod headers;
 mod request;
+mod tls;
 pub mod types;
 mod websocket;
 

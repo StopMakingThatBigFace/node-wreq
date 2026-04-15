@@ -1,4 +1,6 @@
 import { serializeEmulationOptions } from '../config/emulation';
+import { normalizeDnsOptions, normalizeProxyOptions } from '../config/network';
+import { normalizeCertificateAuthority, normalizeTlsIdentity } from '../config/tls';
 import { WebSocketError } from '../errors';
 import { loadCookiesIntoHeaders } from '../http/pipeline/cookies';
 import {
@@ -220,15 +222,20 @@ export class WebSocket extends EventTarget {
     await loadCookiesIntoHeaders(init.cookieJar, this.url, headers);
 
     try {
+      const { proxy, disableSystemProxy } = normalizeProxyOptions(init.proxy);
       const connection = await nativeWebSocketConnect({
         url: this.url,
         headers: headers.toTuples(),
-        origHeaders: init.keepOriginalHeaderNames ? headers.toOriginalNames() : undefined,
+        origHeaders: headers.toOriginalNames(),
         browser: init.browser,
         emulationJson: serializeEmulationOptions(init),
-        proxy: init.proxy,
+        proxy,
+        disableSystemProxy,
+        dns: normalizeDnsOptions(init.dns),
         timeout: init.timeout ?? DEFAULT_TIMEOUT,
         disableDefaultHeaders: init.disableDefaultHeaders ?? false,
+        tlsIdentity: normalizeTlsIdentity(init.tlsIdentity),
+        ca: normalizeCertificateAuthority(init.ca),
         protocols,
       });
 
