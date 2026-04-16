@@ -95,19 +95,33 @@ function cloneTlsInfo(value: TlsPeerInfo | undefined): TlsPeerInfo | undefined {
   };
 }
 
+/** WHATWG-style response wrapper. */
 export class Response {
+  /** HTTP status code. */
   readonly status: number;
+  /** HTTP reason phrase. */
   readonly statusText: string;
+  /** Whether `status` is in the 2xx range. */
   readonly ok: boolean;
+  /** Final response URL. */
   readonly url: string;
+  /** Response headers. */
   readonly headers: Headers;
+  /** Response type exposed for Fetch API compatibility. */
   readonly type = 'basic' as const;
+  /** Extra transport metadata exposed by node-wreq. */
   readonly wreq: WreqResponseMeta;
+  /** Internal cookie map used to build `response.wreq.cookies`. */
   _cookies: Record<string, string>;
+  /** Internal raw `Set-Cookie` list used to build `response.wreq.setCookies`. */
   _setCookies: string[];
+  /** Internal timing metadata used to build `response.wreq.timings`. */
   _timings?: RequestTimings;
+  /** Internal redirect chain used to build `response.wreq.redirectChain`. */
   _redirectChain: RedirectEntry[];
+  /** Internal TLS metadata used to build `response.wreq.tls`. */
   _tls?: TlsPeerInfo;
+  /** Whether the response was produced after at least one redirect hop. */
   redirected: boolean;
   #payloadBytes: Uint8Array | null;
   #bodyHandle: number | null;
@@ -154,10 +168,12 @@ export class Response {
     this.#orphanedStreamReaders = [];
   }
 
+  /** Indicates whether the response body has already been consumed. */
   get bodyUsed(): boolean {
     return this.#bodyUsed;
   }
 
+  /** Attaches redirect metadata and returns the same response instance. */
   setRedirectMetadata(chain: RedirectEntry[]): this {
     this.redirected = chain.length > 0;
     this._redirectChain = [...chain];
@@ -165,38 +181,46 @@ export class Response {
     return this;
   }
 
+  /** Attaches timing metadata and returns the same response instance. */
   setTimings(timings: RequestTimings): this {
     this._timings = { ...timings };
 
     return this;
   }
 
+  /** Returns the response body as a readable byte stream. */
   get body(): ReadableStream<Uint8Array> | null {
     return this.#ensureStream();
   }
 
+  /** Reads the response body as text, honoring the declared charset when possible. */
   async text(): Promise<string> {
     return decodeText(await this.#consumeBytes(), this.headers.get('content-type'));
   }
 
+  /** Reads the response body as JSON. */
   async json<T = unknown>(): Promise<T> {
     return JSON.parse(await this.text()) as T;
   }
 
+  /** Reads the response body as an `ArrayBuffer`. */
   async arrayBuffer(): Promise<ArrayBuffer> {
     return Uint8Array.from(await this.#consumeBytes()).buffer;
   }
 
+  /** Reads the response body as a `Blob`. */
   async blob(): Promise<Blob> {
     return new Blob([await this.#consumeBytes()]);
   }
 
+  /** Reads the response body as `FormData`. */
   async formData(): Promise<FormData> {
     const contentType = this.headers.get('content-type') ?? '';
 
     return parseResponseFormData(await this.#consumeBytes(), contentType);
   }
 
+  /** Creates a clone whose body can be consumed independently. */
   clone(): Response {
     if (this.#isBodyUnusable()) {
       throw new TypeError('Response.clone: Body has already been consumed.');

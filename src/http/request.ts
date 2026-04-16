@@ -10,10 +10,15 @@ import {
   toBodyBytes,
 } from './body/bytes';
 
+/** WHATWG-style request wrapper used by the public API. */
 export class Request {
+  /** Fully resolved request URL. */
   readonly url: string;
+  /** Uppercased HTTP method. */
   readonly method: string;
+  /** Request headers. */
   readonly headers: Headers;
+  /** Abort signal associated with the request, if any. */
   readonly signal: AbortSignal | null;
   #bodyBytes: Uint8Array | null;
   #multipartBody: globalThis.Request | null;
@@ -52,6 +57,7 @@ export class Request {
     this.#setBody(init.body);
   }
 
+  /** Returns the request body as a readable byte stream. */
   get body(): ReadableStream<Uint8Array> | null {
     if (this.#bodyUsed || (this.#bodyBytes === null && this.#multipartBody === null)) {
       return null;
@@ -68,10 +74,12 @@ export class Request {
     return this.#stream;
   }
 
+  /** Indicates whether the request body has already been consumed. */
   get bodyUsed(): boolean {
     return this.#bodyUsed;
   }
 
+  /** Creates a clone whose body can be consumed independently. */
   clone(): Request {
     if (this.#bodyUsed) {
       throw new TypeError('Request body is already used');
@@ -89,22 +97,27 @@ export class Request {
     return cloned;
   }
 
+  /** Reads the request body as UTF-8 text. */
   async text(): Promise<string> {
     return Buffer.from(await this.#consumeBytes()).toString('utf8');
   }
 
+  /** Reads the request body as JSON. */
   async json<T = unknown>(): Promise<T> {
     return JSON.parse(await this.text()) as T;
   }
 
+  /** Reads the request body as an `ArrayBuffer`. */
   async arrayBuffer(): Promise<ArrayBuffer> {
     return Uint8Array.from(await this.#consumeBytes()).buffer;
   }
 
+  /** Reads the request body as a `Blob`. */
   async blob(): Promise<Blob> {
     return new Blob([await this.#consumeBytes()]);
   }
 
+  /** Reads the request body as `FormData`. */
   async formData(): Promise<FormData> {
     if (this.#multipartBody) {
       if (this.#bodyUsed) {
@@ -132,6 +145,7 @@ export class Request {
     return formData;
   }
 
+  /** Internal helper that clones the encoded request body bytes. */
   async _cloneBodyBytes(): Promise<Uint8Array | null> {
     if (this.#bodyBytes !== null) {
       return cloneBytes(this.#bodyBytes);
@@ -144,16 +158,19 @@ export class Request {
     return new Uint8Array(await this.#multipartBody.clone().arrayBuffer());
   }
 
+  /** Internal helper that prepares body bytes for native dispatch. */
   async _getBodyBytesForDispatch(): Promise<Uint8Array | undefined> {
     return (await this._cloneBodyBytes()) ?? undefined;
   }
 
+  /** Internal helper that marks the request body as consumed. */
   _markBodyUsed(): void {
     if (this.#bodyBytes !== null || this.#multipartBody !== null) {
       this.#bodyUsed = true;
     }
   }
 
+  /** Internal helper that creates a modified request copy. */
   _replace(input: {
     url?: string;
     method?: string;

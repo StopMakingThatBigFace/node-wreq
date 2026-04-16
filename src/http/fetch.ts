@@ -24,6 +24,7 @@ import {
 } from './pipeline/redirects';
 import { runRetryDelay, shouldRetryRequest } from './pipeline/retries';
 
+/** Performs an HTTP request using the native transport pipeline. */
 export async function fetch(input: RequestInput, init?: WreqInit) {
   const merged = await mergeInputAndInit(input, init);
   const state = (merged.init.context ? { ...merged.init.context } : {}) as Record<string, unknown>;

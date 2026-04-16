@@ -91,19 +91,31 @@ type ErrorHandler = ((event: Event) => void) | null;
 
 export { CloseEvent };
 
+/** Browser-style WebSocket implementation backed by the native transport. */
 export class WebSocket extends EventTarget {
+  /** Connecting state constant. */
   static readonly CONNECTING = 0;
+  /** Open state constant. */
   static readonly OPEN = 1;
+  /** Closing state constant. */
   static readonly CLOSING = 2;
+  /** Closed state constant. */
   static readonly CLOSED = 3;
 
+  /** Connecting state constant exposed on instances. */
   readonly CONNECTING = WebSocket.CONNECTING;
+  /** Open state constant exposed on instances. */
   readonly OPEN = WebSocket.OPEN;
+  /** Closing state constant exposed on instances. */
   readonly CLOSING = WebSocket.CLOSING;
+  /** Closed state constant exposed on instances. */
   readonly CLOSED = WebSocket.CLOSED;
 
+  /** Final connected WebSocket URL. */
   readonly url: string;
+  /** Negotiated extensions string returned by the server. */
   readonly extensions: string;
+  /** Promise resolved when the connection reaches the open state. */
   readonly opened: Promise<void>;
   #resolveOpened!: () => void;
   #rejectOpened!: (reason?: unknown) => void;
@@ -119,6 +131,7 @@ export class WebSocket extends EventTarget {
   #onclose: CloseHandler = null;
   #onerror: ErrorHandler = null;
 
+  /** Creates and starts connecting a new WebSocket instance. */
   constructor(url: string | URL, init: WebSocketInit = {}) {
     super();
 
@@ -143,18 +156,22 @@ export class WebSocket extends EventTarget {
     void this.#connect(init, headers, protocols);
   }
 
+  /** Current WebSocket ready state. */
   get readyState(): number {
     return this.#readyState;
   }
 
+  /** Negotiated subprotocol, or an empty string when none was selected. */
   get protocol(): string {
     return this.#protocol;
   }
 
+  /** Binary representation used for incoming binary messages. */
   get binaryType(): WebSocketBinaryType {
     return this.#binaryType;
   }
 
+  /** Updates the binary representation used for incoming binary messages. */
   set binaryType(value: WebSocketBinaryType) {
     if (value !== 'blob' && value !== 'arraybuffer') {
       throw new TypeError(`Invalid WebSocket binaryType: ${value}`);
@@ -163,46 +180,56 @@ export class WebSocket extends EventTarget {
     this.#binaryType = value;
   }
 
+  /** Number of bytes queued for sending but not yet flushed. */
   get bufferedAmount(): number {
     return this.#bufferedAmount;
   }
 
+  /** Event handler invoked when the socket opens. */
   get onopen(): OpenHandler {
     return this.#onopen;
   }
 
+  /** Registers an event handler invoked when the socket opens. */
   set onopen(handler: OpenHandler) {
     this.#setEventHandler('open', this.#onopen, handler);
     this.#onopen = handler;
   }
 
+  /** Event handler invoked when a message is received. */
   get onmessage(): MessageHandler {
     return this.#onmessage;
   }
 
+  /** Registers an event handler invoked when a message is received. */
   set onmessage(handler: MessageHandler) {
     this.#setEventHandler('message', this.#onmessage, handler);
     this.#onmessage = handler;
   }
 
+  /** Event handler invoked when the socket closes. */
   get onclose(): CloseHandler {
     return this.#onclose;
   }
 
+  /** Registers an event handler invoked when the socket closes. */
   set onclose(handler: CloseHandler) {
     this.#setEventHandler('close', this.#onclose, handler);
     this.#onclose = handler;
   }
 
+  /** Event handler invoked when the socket reports an error. */
   get onerror(): ErrorHandler {
     return this.#onerror;
   }
 
+  /** Registers an event handler invoked when the socket reports an error. */
   set onerror(handler: ErrorHandler) {
     this.#setEventHandler('error', this.#onerror, handler);
     this.#onerror = handler;
   }
 
+  /** Queues a text or binary message for sending. */
   send(data: string | Blob | ArrayBuffer | ArrayBufferView): void {
     if (this.#readyState !== WebSocket.OPEN || this.#handle === undefined) {
       throw new DOMException('WebSocket is not open', 'InvalidStateError');
@@ -235,6 +262,7 @@ export class WebSocket extends EventTarget {
       });
   }
 
+  /** Starts the closing handshake. */
   close(code?: number, reason = ''): void {
     if (code !== undefined) {
       validateCloseCode(code);
@@ -412,6 +440,7 @@ export class WebSocket extends EventTarget {
   }
 }
 
+/** Connects a WebSocket and resolves once the socket is open. */
 export async function websocket(url: string | URL, init?: WebSocketInit): Promise<WebSocket> {
   const socket = new WebSocket(url, init);
 

@@ -19,6 +19,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+/** Minimal `Headers` implementation used by the public API. */
 export class Headers implements Iterable<HeaderTuple> {
   private readonly store = new Map<string, HeaderEntry>();
   private entriesList: HeaderTuple[] = [];
@@ -69,6 +70,7 @@ export class Headers implements Iterable<HeaderTuple> {
     return { key: trimmed.toLowerCase(), display: trimmed };
   }
 
+  /** Appends a header value without removing existing values for the same name. */
   append(name: string, value: unknown): void {
     const normalized = this.normalizeName(name);
     const entry = this.store.get(normalized.key);
@@ -88,6 +90,7 @@ export class Headers implements Iterable<HeaderTuple> {
     });
   }
 
+  /** Replaces all existing values for a header name. */
   set(name: string, value: unknown): void {
     const normalized = this.normalizeName(name);
     const stringValue = String(value);
@@ -100,9 +103,11 @@ export class Headers implements Iterable<HeaderTuple> {
       name: normalized.display,
       values: [stringValue],
     });
+
     this.entriesList.push([normalized.display, stringValue]);
   }
 
+  /** Returns the combined header value for `name`, or `null` when absent. */
   get(name: string): string | null {
     const normalized = this.normalizeName(name);
     const entry = this.store.get(normalized.key);
@@ -110,12 +115,14 @@ export class Headers implements Iterable<HeaderTuple> {
     return entry ? entry.values.join(', ') : null;
   }
 
+  /** Returns `true` when the header collection contains `name`. */
   has(name: string): boolean {
     const normalized = this.normalizeName(name);
 
     return this.store.has(normalized.key);
   }
 
+  /** Removes all values associated with `name`. */
   delete(name: string): void {
     const normalized = this.normalizeName(name);
 
@@ -125,6 +132,7 @@ export class Headers implements Iterable<HeaderTuple> {
     );
   }
 
+  /** Converts the header collection into a plain object. */
   toObject(): Record<string, string> {
     const result: Record<string, string> = {};
 
@@ -135,10 +143,12 @@ export class Headers implements Iterable<HeaderTuple> {
     return result;
   }
 
+  /** Returns headers as ordered `[name, value]` tuples. */
   toTuples(): HeaderTuple[] {
     return this.entriesList.map(([name, value]) => [name, value]);
   }
 
+  /** Returns unique header names preserving their original casing. */
   toOriginalNames(): string[] {
     const names: string[] = [];
     const seen = new Set<string>();
@@ -157,12 +167,14 @@ export class Headers implements Iterable<HeaderTuple> {
     return names;
   }
 
+  /** Iterates over normalized `[name, value]` header entries. */
   *entries(): IterableIterator<HeaderTuple> {
     for (const entry of this.store.values()) {
       yield [entry.name, entry.values.join(', ')];
     }
   }
 
+  /** Iterates over normalized `[name, value]` header entries. */
   [Symbol.iterator](): IterableIterator<HeaderTuple> {
     return this.entries();
   }

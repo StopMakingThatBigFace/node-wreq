@@ -3,6 +3,7 @@ import { getBinding } from './binding';
 
 let cachedProfiles: BrowserProfile[] | undefined;
 
+/** Returns the list of browser profiles supported by the native transport. */
 export function getProfiles(): BrowserProfile[] {
   cachedProfiles ??= getBinding().getProfiles() as BrowserProfile[];
 

@@ -196,6 +196,7 @@ class WreqClient implements Client {
   }
 }
 
+/** Creates a reusable client with mergeable default options. */
 export function createClient(defaults: ClientDefaults = {}): Client {
   return new WreqClient(defaults);
 }
