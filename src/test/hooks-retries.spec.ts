@@ -7,7 +7,7 @@ describe('hooks and retries', () => {
   const { getBaseUrl, retryAttempts } = setupLocalTestServer();
 
   test('should run init and beforeRequest hooks', async () => {
-    const response = await fetch('https://httpbin.org/anything', {
+    const response = await fetch(`${getBaseUrl()}/anything`, {
       browser: 'chrome_137',
       timeout: 15000,
       hooks: {
@@ -31,7 +31,7 @@ describe('hooks and retries', () => {
 
     assert.strictEqual(body.args.from, 'init-hook', 'Init hook should mutate query');
     assert.strictEqual(
-      body.headers['X-Hook-Header'],
+      body.headers['x-hook-header'],
       'active',
       'beforeRequest should mutate headers'
     );
@@ -64,7 +64,7 @@ describe('hooks and retries', () => {
   });
 
   test('should allow afterResponse to replace the response', async () => {
-    const response = await fetch('https://httpbin.org/status/201', {
+    const response = await fetch(`${getBaseUrl()}/status/201`, {
       browser: 'chrome_137',
       timeout: 15000,
       hooks: {
@@ -88,7 +88,7 @@ describe('hooks and retries', () => {
   test('should allow beforeError to rewrite thrown errors', async () => {
     await assert.rejects(
       async () => {
-        await fetch('https://httpbin.org/status/418', {
+        await fetch(`${getBaseUrl()}/status/418`, {
           browser: 'chrome_137',
           timeout: 15000,
           throwHttpErrors: true,
