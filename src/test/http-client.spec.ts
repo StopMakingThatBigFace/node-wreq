@@ -20,7 +20,7 @@ describe('http client', () => {
   });
 
   test('should make a simple GET request', async () => {
-    const response = await fetch('https://httpbin.org/get', {
+    const response = await fetch(`${getBaseUrl()}/get`, {
       browser: 'chrome_131',
       timeout: 15000,
     });
@@ -30,11 +30,11 @@ describe('http client', () => {
 
     const body = await response.json<{ headers: Record<string, string> }>();
 
-    assert.ok(body.headers['User-Agent'], 'Should have User-Agent header');
+    assert.ok(body.headers['user-agent'], 'Should have User-Agent header');
   });
 
   test('should work with different browser profiles', async () => {
-    const testUrl = 'https://httpbin.org/user-agent';
+    const testUrl = `${getBaseUrl()}/user-agent`;
     const browsers = ['chrome_137', 'firefox_139', 'safari_18'];
 
     for (const browser of browsers) {
@@ -54,7 +54,7 @@ describe('http client', () => {
   test('should handle timeout errors', async () => {
     await assert.rejects(
       async () => {
-        await fetch('https://httpbin.org/delay/10', {
+        await fetch(`${getBaseUrl()}/timings/delay?ms=10000`, {
           browser: 'chrome_137',
           timeout: 1000,
         });
@@ -222,7 +222,7 @@ describe('http client', () => {
   });
 
   test('should support fetch-style requests', async () => {
-    const response = await fetch('https://httpbin.org/get', {
+    const response = await fetch(`${getBaseUrl()}/get`, {
       browser: 'chrome_137',
       query: { source: 'fetch' },
       throwHttpErrors: true,
@@ -239,7 +239,7 @@ describe('http client', () => {
   test('should support createClient defaults', async () => {
     const client = createClient({
       browser: 'chrome_137',
-      baseURL: 'https://httpbin.org',
+      baseURL: getBaseUrl(),
       timeout: 15000,
       headers: {
         'X-Test-Client': 'node-wreq',
@@ -250,7 +250,7 @@ describe('http client', () => {
     const body = await response.json<{ headers: Record<string, string> }>();
 
     assert.strictEqual(
-      body.headers['X-Test-Client'],
+      body.headers['x-test-client'],
       'node-wreq',
       'Client defaults should be merged into outgoing requests'
     );
@@ -388,7 +388,7 @@ describe('http client', () => {
   });
 
   test('should support native-like Request instances', async () => {
-    const request = new WreqRequest('https://httpbin.org/anything', {
+    const request = new WreqRequest(`${getBaseUrl()}/anything`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

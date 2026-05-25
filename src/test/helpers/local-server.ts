@@ -44,6 +44,10 @@ export function setupLocalTestServer() {
     response.end(JSON.stringify(body));
   }
 
+  function readQuery(url: URL): Record<string, string> {
+    return Object.fromEntries(url.searchParams.entries());
+  }
+
   async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
     const chunks: Buffer[] = [];
 
@@ -220,8 +224,39 @@ export function setupLocalTestServer() {
           return;
         }
 
+        if (url.pathname === '/get' || url.pathname === '/headers') {
+          sendJson(response, 200, {
+            args: readQuery(url),
+            headers: request.headers,
+          });
+
+          return;
+        }
+
+        if (url.pathname === '/user-agent') {
+          sendJson(response, 200, {
+            'user-agent': request.headers['user-agent'] ?? '',
+          });
+
+          return;
+        }
+
+        if (url.pathname === '/anything') {
+          const body = await readRequestBody(request);
+
+          sendJson(response, 200, {
+            args: readQuery(url),
+            data: body.toString('utf8'),
+            headers: request.headers,
+            method: request.method,
+          });
+
+          return;
+        }
+
         if (url.pathname === '/headers/raw') {
           sendJson(response, 200, {
+            args: readQuery(url),
             rawHeaders: request.rawHeaders,
             headers: request.headers,
           });
