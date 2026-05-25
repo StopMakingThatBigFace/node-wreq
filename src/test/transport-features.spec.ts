@@ -108,10 +108,10 @@ describe('transport features', () => {
 
   test('should apply readTimeout independently from total timeout', async () => {
     const response = await fetch(
-      `${getBaseUrl()}/stream/slow?chunks=3&chunkBytes=1024&delayMs=40`,
+      `${getBaseUrl()}/stream/slow?chunks=3&chunkBytes=1024&delayMs=300`,
       {
         timeout: 0,
-        readTimeout: 15,
+        readTimeout: 100,
       }
     );
 

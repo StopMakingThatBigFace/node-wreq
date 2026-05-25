@@ -201,9 +201,9 @@ describe('hooks and retries', () => {
     retryAttempts.set('retry-timeout', 0);
 
     const response = await fetch(
-      `${getBaseUrl()}/retry/timeout?key=retry-timeout&failCount=1&delayMs=100`,
+      `${getBaseUrl()}/retry/timeout?key=retry-timeout&failCount=1&delayMs=750`,
       {
-        timeout: 25,
+        timeout: 250,
         retry: {
           limit: 1,
           errorCodes: ['ERR_TIMEOUT'],
