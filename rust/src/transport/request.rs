@@ -45,7 +45,7 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
         client_builder = client_builder.proxy(proxy);
     }
 
-    client_builder = configure_dns(client_builder, dns)?;
+    client_builder = configure_dns(client_builder, dns).await?;
     client_builder = configure_client_builder(
         client_builder,
         tls_identity,

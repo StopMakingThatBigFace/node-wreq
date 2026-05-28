@@ -904,3 +904,36 @@ await fetch('https://api.internal.test/health', {
   },
 });
 ```
+
+Use `dns.doh` to resolve request hostnames through DNS-over-HTTPS:
+
+```ts
+await fetch('https://example.com', {
+  dns: {
+    doh: 'https://cloudflare-dns.com/dns-query',
+  },
+});
+```
+
+Use `dns.dot` to resolve request hostnames through DNS-over-TLS:
+
+```ts
+await fetch('https://example.com', {
+  dns: {
+    dot: 'tls://one.one.one.one',
+  },
+});
+```
+
+`dns.doh` and `dns.dot` are mutually exclusive. When either encrypted DNS mode is set,
+`dns.servers` are used only to resolve the encrypted DNS endpoint hostname. If `dns.servers`
+are omitted, the endpoint is resolved with the system DNS settings.
+
+```ts
+await fetch('https://example.com', {
+  dns: {
+    doh: 'https://cloudflare-dns.com/dns-query',
+    servers: ['9.9.9.9'],
+  },
+});
+```

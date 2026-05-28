@@ -33,6 +33,10 @@ export type BodyInit = string | URLSearchParams | FormData | Buffer | ArrayBuffe
 
 /** DNS overrides applied by the native transport. */
 export interface DnsOptions {
+  /** DNS-over-HTTPS endpoint used for hostname resolution. */
+  doh?: string;
+  /** DNS-over-TLS endpoint used for hostname resolution. */
+  dot?: string;
   /** Upstream DNS servers used for hostname resolution. */
   servers?: string | string[];
   /** Static host-to-address mappings that bypass normal DNS lookups. */
