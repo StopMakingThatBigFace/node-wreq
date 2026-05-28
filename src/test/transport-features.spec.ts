@@ -141,6 +141,43 @@ describe('transport features', () => {
     assert.strictEqual(body.headers.host, `example.test:${target.port}`);
   });
 
+  test('should reject non-HTTPS DoH endpoints', async () => {
+    await assert.rejects(
+      () =>
+        fetch(`${getBaseUrl()}/headers/raw`, {
+          dns: {
+            doh: 'http://cloudflare-dns.com/dns-query',
+          },
+        }),
+      /dns\.doh must be an HTTPS URL/
+    );
+  });
+
+  test('should reject non-tls DoT endpoints', async () => {
+    await assert.rejects(
+      () =>
+        fetch(`${getBaseUrl()}/headers/raw`, {
+          dns: {
+            dot: 'https://cloudflare-dns.com',
+          },
+        }),
+      /dns\.dot must be a tls:\/\/ URL/
+    );
+  });
+
+  test('should reject conflicting encrypted DNS endpoints', async () => {
+    await assert.rejects(
+      () =>
+        fetch(`${getBaseUrl()}/headers/raw`, {
+          dns: {
+            doh: 'https://cloudflare-dns.com/dns-query',
+            dot: 'tls://cloudflare-dns.com',
+          },
+        }),
+      /dns\.doh and dns\.dot cannot both be set/
+    );
+  });
+
   test('should honor env/system proxy by default and allow opting out with proxy=false', async () => {
     const previous = {
       HTTP_PROXY: process.env.HTTP_PROXY,

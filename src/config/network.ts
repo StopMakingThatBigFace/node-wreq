@@ -29,6 +29,49 @@ export function normalizeDnsOptions(dns?: DnsOptions): NativeDnsOptions | undefi
     return undefined;
   }
 
+  const doh = dns.doh?.trim();
+  const dot = dns.dot?.trim();
+
+  if (doh && dot) {
+    throw new TypeError('dns.doh and dns.dot cannot both be set');
+  }
+
+  if (dns.doh !== undefined && !doh) {
+    throw new TypeError('dns.doh must be a non-empty HTTPS URL');
+  }
+
+  if (dns.dot !== undefined && !dot) {
+    throw new TypeError('dns.dot must be a non-empty tls:// URL');
+  }
+
+  if (doh) {
+    let parsed: URL;
+
+    try {
+      parsed = new URL(doh);
+    } catch {
+      throw new TypeError(`dns.doh must be a valid HTTPS URL: ${dns.doh}`);
+    }
+
+    if (parsed.protocol !== 'https:') {
+      throw new TypeError(`dns.doh must be an HTTPS URL: ${dns.doh}`);
+    }
+  }
+
+  if (dot) {
+    let parsed: URL;
+
+    try {
+      parsed = new URL(dot);
+    } catch {
+      throw new TypeError(`dns.dot must be a valid tls:// URL: ${dns.dot}`);
+    }
+
+    if (parsed.protocol !== 'tls:') {
+      throw new TypeError(`dns.dot must be a tls:// URL: ${dns.dot}`);
+    }
+  }
+
   const servers = dns.servers
     ? (Array.isArray(dns.servers) ? dns.servers : [dns.servers])
         .map((server) => server.trim())
@@ -44,11 +87,13 @@ export function normalizeDnsOptions(dns?: DnsOptions): NativeDnsOptions | undefi
       )
     : undefined;
 
-  if ((!servers || servers.length === 0) && !hosts) {
+  if (!doh && !dot && (!servers || servers.length === 0) && !hosts) {
     return undefined;
   }
 
   return {
+    doh,
+    dot,
     servers,
     hosts,
   };

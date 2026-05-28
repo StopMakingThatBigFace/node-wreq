@@ -2,6 +2,10 @@ import type { BrowserProfile, HeaderTuple, HttpMethod, RequestTimings } from './
 
 /** Normalized DNS overrides passed to the native layer. */
 export interface NativeDnsOptions {
+  /** DNS-over-HTTPS endpoint used for hostname resolution. */
+  doh?: string;
+  /** DNS-over-TLS endpoint used for hostname resolution. */
+  dot?: string;
   /** Upstream DNS servers used for hostname resolution. */
   servers?: string[];
   /** Static host-to-address mappings that bypass normal DNS lookups. */

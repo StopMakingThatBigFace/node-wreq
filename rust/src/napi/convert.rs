@@ -641,6 +641,16 @@ fn js_object_to_dns_options(
         .map(|value| js_value_to_string_array(cx, value))
         .transpose()?
         .unwrap_or_default();
+    let doh = dns_obj
+        .get_opt(cx, "doh")?
+        .map(|value: Handle<JsValue>| value.downcast::<JsString, _>(cx).or_throw(cx))
+        .transpose()?
+        .map(|value| value.value(cx));
+    let dot = dns_obj
+        .get_opt(cx, "dot")?
+        .map(|value: Handle<JsValue>| value.downcast::<JsString, _>(cx).or_throw(cx))
+        .transpose()?
+        .map(|value| value.value(cx));
 
     let hosts = dns_obj
         .get_opt(cx, "hosts")?
@@ -671,11 +681,16 @@ fn js_object_to_dns_options(
         .transpose()?
         .unwrap_or_default();
 
-    if servers.is_empty() && hosts.is_empty() {
+    if doh.is_none() && dot.is_none() && servers.is_empty() && hosts.is_empty() {
         return Ok(None);
     }
 
-    Ok(Some(DnsOptions { servers, hosts }))
+    Ok(Some(DnsOptions {
+        doh,
+        dot,
+        servers,
+        hosts,
+    }))
 }
 
 pub(crate) fn response_to_js_object<'a, C: Context<'a>>(

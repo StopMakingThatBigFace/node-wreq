@@ -47,6 +47,8 @@ pub struct ResponseTlsInfo {
 
 #[derive(Debug, Clone)]
 pub struct DnsOptions {
+    pub doh: Option<String>,
+    pub dot: Option<String>,
     pub servers: Vec<String>,
     pub hosts: Vec<(String, Vec<String>)>,
 }
