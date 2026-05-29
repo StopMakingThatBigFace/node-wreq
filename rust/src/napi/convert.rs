@@ -705,12 +705,17 @@ pub(crate) fn response_to_js_object<'a, C: Context<'a>>(
     let url = cx.string(&response.url);
     obj.set(cx, "url", url)?;
 
-    let headers_obj = cx.empty_object();
-    for (key, value) in response.headers {
+    let headers_array = JsArray::new(cx, response.headers.len());
+    for (index, (key, value)) in response.headers.into_iter().enumerate() {
+        let tuple = JsArray::new(cx, 2);
+        let key_str = cx.string(&key);
         let value_str = cx.string(&value);
-        headers_obj.set(cx, key.as_str(), value_str)?;
+
+        tuple.set(cx, 0, key_str)?;
+        tuple.set(cx, 1, value_str)?;
+        headers_array.set(cx, index as u32, tuple)?;
     }
-    obj.set(cx, "headers", headers_obj)?;
+    obj.set(cx, "headers", headers_array)?;
 
     let cookies_obj = cx.empty_object();
     for (key, value) in response.cookies {

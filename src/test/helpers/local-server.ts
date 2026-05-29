@@ -218,6 +218,20 @@ export function setupLocalTestServer() {
           return;
         }
 
+        if (url.pathname === '/headers/duplicates') {
+          sendJson(
+            response,
+            200,
+            { ok: true },
+            {
+              'x-dupe': ['one', 'two'],
+              'set-cookie': ['session=abc123; Path=/', 'csrf=token123; Path=/'],
+            }
+          );
+
+          return;
+        }
+
         if (url.pathname === '/cookies/echo') {
           sendJson(response, 200, { cookie: readCookieHeader(request) });
 

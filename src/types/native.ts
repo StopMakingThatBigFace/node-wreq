@@ -133,8 +133,8 @@ export interface NativeResponse {
   status: number;
   /** HTTP reason phrase when provided by the transport. */
   statusText?: string;
-  /** Response headers normalized to a plain object. */
-  headers: Record<string, string>;
+  /** Response headers as ordered `[name, value]` tuples. */
+  headers: HeaderTuple[];
   /** Eagerly loaded UTF-8 response body, when available. */
   body?: string;
   /** Native body handle used for streaming large responses. */

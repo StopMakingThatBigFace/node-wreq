@@ -72,12 +72,10 @@ Generate accurate release notes from the git history since the previous release.
    - `Dependencies`
    - `Breaking Changes`
 
-7. Write release notes in this shape unless the user requests another format:
+7. Write release notes in this shape:
 
    ```markdown
-   ## <version or "Unreleased">
-
-   Compared with `<base tag>`.
+   ## Release Notes
 
    ### Added
    - ...
@@ -98,5 +96,7 @@ Generate accurate release notes from the git history since the previous release.
 - Mention internal-only test, lint, formatting, and CI work only under `Tests` or `Build & CI`.
 - Keep bullets concrete and scoped: name the API, feature, platform, or workflow affected.
 - Include the compared range and base tag in the final answer.
+- Always return the final release notes inside one outer fenced Markdown code block using four backticks and `md` as the language: ````md ... ````. This is mandatory even when the user does not explicitly ask for a code block.
+- If the release notes contain code examples, keep normal triple-backtick fences inside the outer four-backtick block so the response does not terminate early.
 - If the range is empty, say no changes were found after the selected release tag.
 - If tags are missing or ambiguous, stop and ask for the intended base release instead of guessing.
