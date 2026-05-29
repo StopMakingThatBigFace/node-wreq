@@ -2,7 +2,23 @@ name: 🧪 Test
 
 on:
   push:
+    paths:
+      - '.github/workflows/test.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'src/**'
+      - 'rust/**'
+      - 'scripts/**'
   pull_request:
+    paths:
+      - '.github/workflows/test.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'src/**'
+      - 'rust/**'
+      - 'scripts/**'
 
 jobs:
   test:
