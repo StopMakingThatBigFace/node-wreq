@@ -89,7 +89,7 @@ pub struct RequestOptions {
 #[derive(Debug, Clone)]
 pub struct Response {
     pub status: u16,
-    pub headers: HashMap<String, String>,
+    pub headers: Vec<(String, String)>,
     pub body_handle: u64,
     pub cookies: HashMap<String, String>,
     pub set_cookies: Vec<String>,

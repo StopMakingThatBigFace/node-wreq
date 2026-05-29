@@ -141,6 +141,28 @@ describe('transport features', () => {
     assert.strictEqual(body.headers.host, `example.test:${target.port}`);
   });
 
+  test('should preserve duplicate response headers like fetch', async () => {
+    const response = await fetch(`${getBaseUrl()}/headers/duplicates`);
+
+    assert.strictEqual(response.headers.get('x-dupe'), 'one, two');
+    assert.deepStrictEqual(response.headers.getSetCookie(), [
+      'session=abc123; Path=/',
+      'csrf=token123; Path=/',
+    ]);
+    assert.strictEqual(
+      response.headers.get('set-cookie'),
+      'session=abc123; Path=/, csrf=token123; Path=/'
+    );
+
+    const cloned = response.clone();
+
+    assert.strictEqual(cloned.headers.get('x-dupe'), 'one, two');
+    assert.deepStrictEqual(cloned.headers.getSetCookie(), [
+      'session=abc123; Path=/',
+      'csrf=token123; Path=/',
+    ]);
+  });
+
   test('should reject non-HTTPS DoH endpoints', async () => {
     await assert.rejects(
       () =>

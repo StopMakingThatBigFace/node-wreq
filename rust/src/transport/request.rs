@@ -5,7 +5,6 @@ use crate::transport::headers::build_orig_header_map;
 use crate::transport::tls::configure_client_builder;
 use crate::transport::types::{RequestOptions, Response, ResponseTlsInfo};
 use anyhow::{Context, Result};
-use std::collections::HashMap;
 use std::time::Duration;
 use wreq::{redirect, tls::TlsInfo, Method};
 
@@ -165,14 +164,14 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
     let status = response.status().as_u16();
     let final_url = response.uri().to_string();
 
-    let mut response_headers = HashMap::new();
+    let mut response_headers = Vec::new();
     for (key, value) in response.headers() {
         if let Ok(value_str) = value.to_str() {
-            response_headers.insert(key.to_string(), value_str.to_string());
+            response_headers.push((key.to_string(), value_str.to_string()));
         }
     }
 
-    let mut cookies = HashMap::new();
+    let mut cookies = std::collections::HashMap::new();
     let mut set_cookies = Vec::new();
     for cookie_header in response.headers().get_all("set-cookie") {
         if let Ok(cookie_str) = cookie_header.to_str() {

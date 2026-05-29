@@ -229,7 +229,7 @@ export class Response {
     const cloned = new Response(null, {
       status: this.status,
       statusText: this.statusText,
-      headers: this.headers.toObject(),
+      headers: this.headers.toTuples(),
       url: this.url,
     });
 

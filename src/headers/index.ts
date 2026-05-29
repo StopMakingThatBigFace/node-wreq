@@ -115,6 +115,11 @@ export class Headers implements Iterable<HeaderTuple> {
     return entry ? entry.values.join(', ') : null;
   }
 
+  /** Returns all `Set-Cookie` header values without comma-joining them. */
+  getSetCookie(): string[] {
+    return [...(this.store.get('set-cookie')?.values ?? [])];
+  }
+
   /** Returns `true` when the header collection contains `name`. */
   has(name: string): boolean {
     const normalized = this.normalizeName(name);
