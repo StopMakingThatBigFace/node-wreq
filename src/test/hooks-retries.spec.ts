@@ -80,6 +80,7 @@ describe('hooks and retries', () => {
     });
 
     assert.strictEqual(response.status, 299, 'afterResponse should replace the response');
+
     const body = await response.json<{ replaced: boolean }>();
 
     assert.strictEqual(body.replaced, true, 'Replaced response body should be returned');
@@ -111,6 +112,7 @@ describe('hooks and retries', () => {
 
   test('should run beforeRetry hooks and retry retriable responses', async () => {
     retryAttempts.set('status-retry', 0);
+
     const hookAttempts: number[] = [];
     const response = await fetch(`${getBaseUrl()}/retry?key=status-retry&failCount=2`, {
       retry: {

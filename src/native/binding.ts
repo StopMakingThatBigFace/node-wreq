@@ -1,5 +1,3 @@
-import { execSync } from 'node:child_process';
-import { resolve } from 'node:path';
 import type {
   NativeRequestOptions,
   NativeResponse,
@@ -7,6 +5,8 @@ import type {
   NativeWebSocketConnection,
   NativeWebSocketReadResult,
 } from '../types';
+import { execSync } from 'node:child_process';
+import { resolve } from 'node:path';
 
 export type NativeBinding = {
   request: (options: NativeRequestOptions) => {

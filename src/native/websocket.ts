@@ -1,9 +1,9 @@
-import { Buffer } from 'node:buffer';
 import type {
   NativeWebSocketConnectOptions,
   NativeWebSocketConnection,
   NativeWebSocketReadResult,
 } from '../types';
+import { Buffer } from 'node:buffer';
 import { getBinding } from './binding';
 
 export async function nativeWebSocketConnect(

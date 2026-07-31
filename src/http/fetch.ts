@@ -1,3 +1,4 @@
+import type { RedirectEntry, RequestInput, RetryDecisionContext, WreqInit } from '../types';
 import { HTTPError, RequestError } from '../errors';
 import {
   runAfterResponseHooks,
@@ -8,7 +9,6 @@ import {
   runInitHooks,
 } from '../hooks';
 import { normalizeMethod } from '../native/index';
-import type { RedirectEntry, RequestInput, RetryDecisionContext, WreqInit } from '../types';
 import { loadCookiesIntoRequest, persistResponseCookies } from './pipeline/cookies';
 import { dispatchNativeRequest, reportStats } from './pipeline/dispatch';
 import { isResponseStatusAllowed, normalizeRequestError, throwIfAborted } from './pipeline/errors';

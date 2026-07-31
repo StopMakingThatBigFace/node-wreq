@@ -11,6 +11,7 @@ describe('http client', () => {
 
     assert.ok(Array.isArray(profiles), 'Profiles should be an array');
     assert.ok(profiles.length > 0, 'Should have at least one profile');
+
     for (const profile of [
       'chrome_149',
       'edge_148',
@@ -108,6 +109,7 @@ describe('http client', () => {
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.strictEqual(error.name, 'RequestError');
+
         const cause = (error as { cause?: unknown }).cause;
 
         assert.ok(
@@ -129,6 +131,7 @@ describe('http client', () => {
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.strictEqual(error.name, 'RequestError');
+
         const cause = (error as { cause?: unknown }).cause;
 
         assert.ok(cause instanceof TypeError);
@@ -151,6 +154,7 @@ describe('http client', () => {
     const customResponse = await fetch(`${getBaseUrl()}/body/echo`, {
       method: 'PROPFIND',
     });
+
     const customBody = await customResponse.json<{ method: string }>();
 
     assert.strictEqual(customBody.method, 'PROPFIND');
@@ -173,6 +177,7 @@ describe('http client', () => {
       (await patchResponse.json<{ method: string; body: string }>()).body,
       'patch-body'
     );
+
     assert.strictEqual((await deleteResponse.json<{ method: string }>()).method, 'DELETE');
     assert.strictEqual(headResponse.status, 200);
   });
@@ -291,6 +296,7 @@ describe('http client', () => {
         'content-type': 'application/json',
       },
     });
+
     const body = await response.json<{ method: string; body: string }>();
 
     assert.strictEqual(body.method, 'POST');

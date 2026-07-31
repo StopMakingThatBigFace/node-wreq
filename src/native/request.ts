@@ -1,5 +1,5 @@
-import { AbortError } from '../errors';
 import type { NativeRequestOptions, NativeResponse } from '../types';
+import { AbortError } from '../errors';
 import { getBinding } from './binding';
 
 export async function nativeRequest(

@@ -1,5 +1,5 @@
-import { Buffer } from 'node:buffer';
 import type { BodyInit } from '../../types';
+import { Buffer } from 'node:buffer';
 
 const FORM_DATA_PLACEHOLDER_URL = 'http://node-wreq.invalid/';
 

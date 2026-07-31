@@ -1,3 +1,9 @@
+import type {
+  NativeRequestOptions,
+  ResolvedOptions,
+  ResolvedRetryOptions,
+  WreqInit,
+} from '../../types';
 import { Buffer } from 'node:buffer';
 import { serializeEmulationOptions } from '../../config/emulation';
 import {
@@ -13,12 +19,6 @@ import {
 } from '../../config/tls';
 import { Headers } from '../../headers';
 import { normalizeMethod, validateBrowserProfile } from '../../native/index';
-import type {
-  NativeRequestOptions,
-  ResolvedOptions,
-  ResolvedRetryOptions,
-  WreqInit,
-} from '../../types';
 import { Request } from '../request';
 
 const DEFAULT_RETRY_METHODS = ['GET', 'HEAD'] as const;

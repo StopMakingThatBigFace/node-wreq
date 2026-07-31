@@ -28,6 +28,7 @@ export function setupProxyTestServer() {
         response.writeHead(502, {
           'content-type': 'application/json',
         });
+
         response.end(JSON.stringify({ error: error.message }));
       });
     });

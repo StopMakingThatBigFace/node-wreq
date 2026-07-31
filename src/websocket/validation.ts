@@ -1,7 +1,7 @@
+import type { HeadersInit, WebSocketInit } from '../types';
 import { Buffer } from 'node:buffer';
 import { WebSocketError } from '../errors';
 import { Headers } from '../headers';
-import type { HeadersInit, WebSocketInit } from '../types';
 
 const SUBPROTOCOL_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const FORBIDDEN_WEBSOCKET_HEADERS = new Set([

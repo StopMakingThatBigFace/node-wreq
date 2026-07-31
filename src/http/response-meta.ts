@@ -1,6 +1,6 @@
-import { Readable } from 'node:stream';
 import type { RequestTimings, RedirectEntry, TlsPeerInfo, WreqResponseMeta } from '../types';
 import type { Response } from './response';
+import { Readable } from 'node:stream';
 
 /** Implementation backing the `response.wreq` metadata surface. */
 export class ResponseMeta implements WreqResponseMeta {

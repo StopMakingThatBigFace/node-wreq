@@ -1,3 +1,4 @@
+import type { WebSocketBinaryType, WebSocketInit } from '../types';
 import { serializeEmulationOptions } from '../config/emulation';
 import {
   normalizeDnsOptions,
@@ -20,7 +21,6 @@ import {
   nativeWebSocketSendText,
   validateBrowserProfile,
 } from '../native/index';
-import type { WebSocketBinaryType, WebSocketInit } from '../types';
 import { CloseEvent } from './close-event';
 import { getSendByteLength, normalizeSendData, toMessageEventData } from './send-data';
 import {
@@ -137,6 +137,7 @@ export class WebSocket extends EventTarget {
 
     this.url = resolveWebSocketUrl(url, init);
     validateBrowserProfile(init.browser);
+
     const headers = normalizeHeaders(init.headers);
     const protocols = normalizeProtocols(init.protocols);
 
@@ -146,6 +147,7 @@ export class WebSocket extends EventTarget {
         'SyntaxError'
       );
     }
+
     this.extensions = '';
     this.#binaryType = init.binaryType ?? 'blob';
     this.opened = new Promise<void>((resolve, reject) => {
@@ -340,6 +342,7 @@ export class WebSocket extends EventTarget {
 
       this.#handle = connection.handle;
       this.#protocol = connection.protocol ?? '';
+
       if (connection.protocol && protocols.length > 0 && !protocols.includes(connection.protocol)) {
         throw new WebSocketError(`Server selected unexpected subprotocol: ${connection.protocol}`);
       }
@@ -390,17 +393,17 @@ export class WebSocket extends EventTarget {
     }
   }
 
-  #setEventHandler(
+  #setEventHandler<T extends Event>(
     type: string,
-    current: ((event: any) => void) | null,
-    next: ((event: any) => void) | null
+    current: ((event: T) => void) | null,
+    next: ((event: T) => void) | null
   ): void {
     if (current) {
-      this.removeEventListener(type, current);
+      this.removeEventListener(type, current as (event: Event) => void);
     }
 
     if (next) {
-      this.addEventListener(type, next);
+      this.addEventListener(type, next as (event: Event) => void);
     }
   }
 
@@ -428,6 +431,7 @@ export class WebSocket extends EventTarget {
 
     this.#settled = true;
     this.#readyState = WebSocket.CLOSED;
+
     if (this.#handle !== undefined) {
       this.#handle = undefined;
     }

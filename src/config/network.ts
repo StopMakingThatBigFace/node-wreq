@@ -1,4 +1,3 @@
-import { isIP } from 'node:net';
 import type {
   DnsOptions,
   NativeDnsOptions,
@@ -6,6 +5,7 @@ import type {
   WebSocketInit,
   WreqInit,
 } from '../types';
+import { isIP } from 'node:net';
 
 export function normalizeProxyOptions(proxy: WreqInit['proxy']): {
   proxy?: string;

@@ -1,10 +1,3 @@
-import { Blob, Buffer } from 'node:buffer';
-import { STATUS_CODES } from 'node:http';
-import { ReadableStream } from 'node:stream/web';
-import { TextDecoder } from 'node:util';
-import { RequestError, TimeoutError } from '../errors';
-import { Headers } from '../headers';
-import { nativeCancelBody, nativeReadBodyChunk } from '../native/index';
 import type {
   BodyInit,
   HeadersInit,
@@ -14,6 +7,13 @@ import type {
   TlsPeerInfo,
   WreqResponseMeta,
 } from '../types';
+import { Blob, Buffer } from 'node:buffer';
+import { STATUS_CODES } from 'node:http';
+import { ReadableStream } from 'node:stream/web';
+import { TextDecoder } from 'node:util';
+import { RequestError, TimeoutError } from '../errors';
+import { Headers } from '../headers';
+import { nativeCancelBody, nativeReadBodyChunk } from '../native/index';
 import { cloneBytes, toBodyBytes } from './body/bytes';
 import { parseResponseFormData } from './body/form-data';
 import { ResponseMeta } from './response-meta';
@@ -249,6 +249,7 @@ export class Response {
       this.#streamSource = left;
       this.#stream = null;
       cloned.#streamSource = right;
+
       if (previousStream) {
         this.#orphanedStreamReaders.push(previousStream.getReader());
       }
@@ -358,6 +359,7 @@ export class Response {
         pull: async (controller) => {
           this.#bodyUsed = true;
           sourceReader ??= source.getReader();
+
           const result = await sourceReader.read();
 
           if (result.done) {
@@ -371,6 +373,7 @@ export class Response {
         },
         cancel: async () => {
           this.#bodyUsed = true;
+
           if (sourceReader) {
             await sourceReader.cancel();
           } else {
@@ -395,9 +398,11 @@ export class Response {
 
     if (stream) {
       this.#bodyUsed = true;
+
       const reader = stream.getReader();
 
       this.#orphanedStreamReaders.push(reader);
+
       const chunks: Uint8Array[] = [];
 
       while (true) {

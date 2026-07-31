@@ -2,12 +2,17 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "sortPackageJson": false,
   "sortImports": {
+    "groups": [["type"], ["external"], ["builtin"], ["parent", "sibling"], "index"],
     "sortSideEffects": true,
     "newlinesBetween": false
   },
   "ignorePatterns": [
     "**/dist/**",
     "**/node_modules/**",
+    "**/.release/**",
+    "**/.release-stubs/**",
+    "**/.tmp-release/**",
+    "**/artifacts/**"
   ],
   "semi": true,
   "trailingComma": "es5",

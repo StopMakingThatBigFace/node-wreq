@@ -1,7 +1,7 @@
+import type { BodyInit, HttpMethod, RedirectEntry } from '../../types';
 import { RequestError } from '../../errors';
 import { Headers } from '../../headers';
 import { normalizeMethod } from '../../native/index';
-import type { BodyInit, HttpMethod, RedirectEntry } from '../../types';
 import { Response } from '../response';
 
 const REDIRECT_STATUS_CODES = new Set([300, 301, 302, 303, 307, 308]);

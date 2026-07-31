@@ -1,6 +1,3 @@
-import { Headers } from '../headers';
-import { mergeHooks } from '../hooks';
-import { fetch } from '../http/fetch';
 import type {
   Client,
   ClientDefaults,
@@ -11,6 +8,9 @@ import type {
   WebSocketInit,
   WreqInit,
 } from '../types';
+import { Headers } from '../headers';
+import { mergeHooks } from '../hooks';
+import { fetch } from '../http/fetch';
 import { websocket } from '../websocket';
 
 function mergeHeaders(...sources: Array<HeadersInit | undefined>): HeaderTuple[] | undefined {

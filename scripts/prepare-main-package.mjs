@@ -12,7 +12,6 @@ const rootPackage = JSON.parse(await readFile(resolve(repoRoot, 'package.json'),
 const publishVersion = resolvePublishVersion(rootPackage);
 
 await rm(outDir, { recursive: true, force: true });
-
 await mkdir(outDir, { recursive: true });
 
 await cp(resolve(repoRoot, 'dist'), resolve(outDir, 'dist'), {

@@ -22,10 +22,10 @@ describe('response behavior', () => {
     assert.ok(bodyStream, 'body should expose a stream');
     assert.strictEqual(response.bodyUsed, false, 'accessing body should not mark it used');
 
-    const reader = bodyStream?.getReader();
+    const reader = bodyStream.getReader();
     const chunks: Uint8Array[] = [];
 
-    while (reader) {
+    while (true) {
       const result = await reader.read();
 
       if (result.done) {
@@ -73,6 +73,7 @@ describe('response behavior', () => {
       initialBody,
       'clone should replace the original body branch'
     );
+
     assert.throws(
       () => initialBody?.getReader(),
       (error: unknown) => error instanceof TypeError && error.message.includes('locked'),
@@ -152,10 +153,10 @@ describe('response behavior', () => {
       'accessing the fetched body should not mark it used'
     );
 
-    const reader = stream?.getReader();
+    const reader = stream.getReader();
     const chunks: Uint8Array[] = [];
 
-    while (reader) {
+    while (true) {
       const result = await reader.read();
 
       if (result.done) {
@@ -167,6 +168,7 @@ describe('response behavior', () => {
         true,
         'reading the fetched body stream should mark it used'
       );
+
       chunks.push(result.value);
     }
 
@@ -188,11 +190,13 @@ describe('response behavior', () => {
       left.includes('"cookie":""'),
       'the tee payload should match the fetched response body'
     );
+
     assert.strictEqual(
       response.bodyUsed,
       true,
       'original response should be marked used after reading'
     );
+
     assert.strictEqual(
       cloned.bodyUsed,
       true,

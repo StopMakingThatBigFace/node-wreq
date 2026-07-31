@@ -1,7 +1,7 @@
+import type { BodyInit, HeadersInit, WreqInit } from '../types';
 import { Blob, Buffer } from 'node:buffer';
 import { ReadableStream } from 'node:stream/web';
 import { Headers } from '../headers';
-import type { BodyInit, HeadersInit, WreqInit } from '../types';
 import {
   cloneBodyInit,
   cloneBytes,

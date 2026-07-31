@@ -1,6 +1,6 @@
+import type { RequestInput, WreqInit } from '../../types';
 import { Buffer } from 'node:buffer';
 import { RequestError } from '../../errors';
-import type { RequestInput, WreqInit } from '../../types';
 import { Request } from '../request';
 
 function isGlobalRequest(value: unknown): value is globalThis.Request {

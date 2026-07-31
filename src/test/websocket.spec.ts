@@ -33,6 +33,7 @@ describe('websocket', () => {
     const replyPromise = onceEvent<MessageEvent>(socket, 'message');
 
     socket.send('hello');
+
     const replyEvent = await replyPromise;
 
     assert.strictEqual(replyEvent.data, 'hello');
@@ -40,6 +41,7 @@ describe('websocket', () => {
     const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
     socket.close(1000, 'done');
+
     const closeEvent = await closePromise;
 
     assert.strictEqual(closeEvent.code, 1000);
@@ -59,6 +61,7 @@ describe('websocket', () => {
     const replyPromise = onceEvent<MessageEvent>(socket, 'message');
 
     socket.send(new Uint8Array([1, 2, 3]));
+
     const replyEvent = await replyPromise;
 
     assert.ok(replyEvent.data instanceof ArrayBuffer);
@@ -67,6 +70,7 @@ describe('websocket', () => {
     const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
     socket.close(1000, 'done');
+
     await closePromise;
   });
 
@@ -91,14 +95,13 @@ describe('websocket', () => {
     const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
     socket.close(1000, 'done');
+
     await closePromise;
   });
 
   test('should reject websocket URLs with fragments', () => {
     assert.throws(
-      () => {
-        new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws#fragment');
-      },
+      () => new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws#fragment'),
       (error: unknown) => error instanceof DOMException && error.name === 'SyntaxError',
       'fragment websocket URLs should be rejected'
     );
@@ -106,23 +109,21 @@ describe('websocket', () => {
 
   test('should reject forbidden websocket headers and duplicate protocols', () => {
     assert.throws(
-      () => {
+      () =>
         new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
           headers: {
             Upgrade: 'websocket',
           },
-        });
-      },
+        }),
       (error: unknown) => error instanceof DOMException && error.name === 'SyntaxError',
       'forbidden managed websocket headers should be rejected'
     );
 
     assert.throws(
-      () => {
+      () =>
         new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
           protocols: ['chat', 'chat'],
-        });
-      },
+        }),
       (error: unknown) =>
         error instanceof SyntaxError && error.message.includes('Duplicate WebSocket subprotocol'),
       'duplicate websocket subprotocols should be rejected'
@@ -163,6 +164,7 @@ describe('websocket', () => {
     const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
     socket.close(1000, 'done');
+
     await closePromise;
   });
 
@@ -197,14 +199,17 @@ describe('websocket', () => {
     );
 
     await onceEvent<MessageEvent>(socket, 'message');
+
     await new Promise((resolve) => {
       setTimeout(resolve, 25);
     });
+
     assert.strictEqual(socket.bufferedAmount, 0, 'bufferedAmount should drain after send');
 
     const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
     socket.close(1000, 'done');
+
     await closePromise;
   });
 
@@ -243,6 +248,7 @@ describe('websocket', () => {
     const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
     socket.close(1000, 'done');
+
     await closePromise;
   });
 });

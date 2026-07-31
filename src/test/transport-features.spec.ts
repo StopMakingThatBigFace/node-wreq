@@ -23,6 +23,7 @@ describe('transport features', () => {
       method: 'POST',
       body: formData,
     });
+
     const body = await response.json<{ body: string; headers: Record<string, string> }>();
 
     assert.match(
@@ -30,12 +31,14 @@ describe('transport features', () => {
       /^multipart\/form-data; boundary=/,
       'multipart bodies should set a valid content-type boundary'
     );
+
     assert.ok(body.body.includes('name="alpha"'), 'multipart payload should include text fields');
     assert.ok(body.body.includes('name="beta"'), 'multipart payload should include all fields');
     assert.ok(
       body.body.includes('filename="hello.txt"'),
       'multipart payload should preserve filenames'
     );
+
     assert.ok(
       body.body.includes('hello multipart'),
       'multipart payload should include file contents'
@@ -86,6 +89,7 @@ describe('transport features', () => {
     const compressed = await fetch(`${getBaseUrl()}/headers/raw`, {
       browser: 'chrome_137',
     });
+
     const compressedBody = await compressed.json<{ headers: Record<string, string> }>();
 
     assert.ok(
@@ -97,6 +101,7 @@ describe('transport features', () => {
       browser: 'chrome_137',
       compress: false,
     });
+
     const uncompressedBody = await uncompressed.json<{ headers: Record<string, string> }>();
 
     assert.strictEqual(
@@ -135,6 +140,7 @@ describe('transport features', () => {
         },
       },
     });
+
     const body = await response.json<{ headers: Record<string, string> }>();
 
     assert.strictEqual(response.status, 200);
@@ -149,6 +155,7 @@ describe('transport features', () => {
       'session=abc123; Path=/',
       'csrf=token123; Path=/',
     ]);
+
     assert.strictEqual(
       response.headers.get('set-cookie'),
       'session=abc123; Path=/, csrf=token123; Path=/'
@@ -254,6 +261,7 @@ describe('transport features', () => {
     const defaultResponse = await fetch(`${getBaseUrl()}/headers/raw`, {
       browser: 'chrome_137',
     });
+
     const defaultBody = await defaultResponse.json<{ headers: Record<string, string> }>();
 
     assert.ok(defaultBody.headers['user-agent'], 'browser presets should include user-agent');
@@ -266,6 +274,7 @@ describe('transport features', () => {
       browser: 'chrome_137',
       disableDefaultHeaders: true,
     });
+
     const strippedBody = await strippedResponse.json<{ headers: Record<string, string> }>();
 
     assert.strictEqual(strippedBody.headers['user-agent'], undefined);

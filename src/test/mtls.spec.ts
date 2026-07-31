@@ -87,6 +87,7 @@ test('should expose peer certificates in response metadata when requested', asyn
     Buffer.isBuffer(response.wreq.tls?.peerCertificate),
     'leaf certificate should be returned as a Buffer'
   );
+
   assert.ok(
     (response.wreq.tls?.peerCertificateChain?.length ?? 0) >= 1,
     'certificate chain should include at least the leaf certificate'

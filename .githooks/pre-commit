@@ -4,10 +4,5 @@ set -eu
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-echo "pre-commit: running lint autofix"
-npm run lint:fix
-
-echo "pre-commit: running formatter"
-npm run format
-
-git add -A -- src
+echo "pre-commit: formatting and linting staged files"
+npm run lint:staged

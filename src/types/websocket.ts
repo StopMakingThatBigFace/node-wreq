@@ -10,8 +10,8 @@ import type {
   TlsDebugOptions,
   TlsIdentity,
   TlsOptions,
+  HeaderTuple,
 } from './shared';
-import type { HeaderTuple } from './shared';
 
 /** Binary payload representation used by incoming WebSocket messages. */
 export type WebSocketBinaryType = 'blob' | 'arraybuffer';

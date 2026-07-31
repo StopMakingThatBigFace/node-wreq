@@ -90,10 +90,12 @@ export type InitHook = (ctx: InitContext) => void | Promise<void>;
 export type BeforeRequestHook = (
   ctx: BeforeRequestContext
 ) => void | Response | Promise<void | Response>;
+
 /** Hook invoked after each response; can replace the response. */
 export type AfterResponseHook = (
   ctx: AfterResponseContext
 ) => void | Response | Promise<void | Response>;
+
 /** Hook invoked before a retry delay is applied. */
 export type BeforeRetryHook = (ctx: BeforeRetryContext) => void | Promise<void>;
 /** Hook invoked before the final error is thrown; can replace the error. */

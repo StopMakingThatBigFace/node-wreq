@@ -68,6 +68,7 @@ try {
 
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, content, 'utf8');
+
   await execFileAsync(resolve(repoRoot, 'node_modules/.bin/oxfmt'), ['--write', outputPath], {
     cwd: repoRoot,
   });
