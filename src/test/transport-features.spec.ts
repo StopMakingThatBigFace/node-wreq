@@ -24,7 +24,11 @@ describe('transport features', () => {
       body: formData,
     });
 
-    const body = await response.json<{ body: string; headers: Record<string, string> }>();
+    const body = await response.json<{
+      body: string;
+      bodyBase64: string;
+      headers: Record<string, string>;
+    }>();
 
     assert.match(
       body.headers['content-type'],
@@ -43,6 +47,175 @@ describe('transport features', () => {
       body.body.includes('hello multipart'),
       'multipart payload should include file contents'
     );
+
+    assert.strictEqual(
+      Number(body.headers['content-length']),
+      Buffer.from(body.bodyBase64, 'base64').byteLength,
+      'native multipart should retain an exact content length while streaming files'
+    );
+  });
+
+  test('should stream FormData files without calling Blob.arrayBuffer()', async () => {
+    const originalArrayBuffer = Blob.prototype.arrayBuffer;
+    const formData = new FormData();
+
+    formData.append(
+      'upload',
+      new File([Buffer.alloc(1024 * 1024, 0x61)], 'streamed.bin', {
+        type: 'application/octet-stream',
+      })
+    );
+
+    Blob.prototype.arrayBuffer = async () => {
+      throw new Error('Blob.arrayBuffer() must not be used by multipart dispatch');
+    };
+
+    try {
+      const response = await fetch(`${getBaseUrl()}/body/echo`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const body = await response.json<{ bodyBase64: string }>();
+
+      assert.ok(body.bodyBase64.length > 1024 * 1024, 'the complete file should reach the server');
+    } finally {
+      Blob.prototype.arrayBuffer = originalArrayBuffer;
+    }
+  });
+
+  test('should cancel an active multipart file stream when the request is aborted', async () => {
+    let streamCancelled = false;
+
+    class SlowFile extends File {
+      override stream(): ReadableStream<Uint8Array> {
+        const reader = super.stream().getReader();
+
+        return new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+
+            const result = await reader.read();
+
+            if (result.done) {
+              controller.close();
+            } else {
+              controller.enqueue(result.value);
+            }
+          },
+          async cancel(reason) {
+            streamCancelled = true;
+
+            await reader.cancel(reason);
+          },
+        });
+      }
+    }
+
+    const controller = new AbortController();
+    const formData = new FormData();
+
+    formData.append('upload', new SlowFile([Buffer.alloc(4 * 1024 * 1024)], 'slow.bin'));
+
+    const pending = fetch(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+
+    setTimeout(() => controller.abort(new Error('stop multipart upload')), 10);
+
+    await assert.rejects(pending, (error: unknown) => {
+      return error instanceof Error && error.name === 'AbortError';
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.strictEqual(streamCancelled, true);
+  });
+
+  test('should propagate multipart source stream failures', async () => {
+    class BrokenFile extends File {
+      override stream(): ReadableStream<Uint8Array> {
+        throw new Error('broken multipart source');
+      }
+    }
+
+    const formData = new FormData();
+
+    formData.append('upload', new BrokenFile(['broken'], 'broken.bin'));
+
+    await assert.rejects(
+      fetch(`${getBaseUrl()}/body/echo`, {
+        method: 'POST',
+        body: formData,
+      }),
+      (error: unknown) => {
+        return error instanceof Error && error.message.includes('broken multipart source');
+      }
+    );
+  });
+
+  test('should recreate multipart streams for retries', async () => {
+    const formData = new FormData();
+    const key = `multipart-${Date.now()}-${Math.random()}`;
+
+    formData.append('alpha', 'retry');
+    formData.append('upload', new File(['retry me'], 'retry.txt', { type: 'text/plain' }));
+
+    const response = await fetch(
+      `${getBaseUrl()}/retry/body?key=${encodeURIComponent(key)}&failCount=1`,
+      {
+        method: 'POST',
+        body: formData,
+        retry: {
+          limit: 1,
+          methods: ['POST'],
+          statusCodes: [503],
+        },
+      }
+    );
+
+    const body = await response.json<{ attempt: number; body: string }>();
+
+    assert.strictEqual(body.attempt, 2);
+    assert.ok(body.body.includes('retry me'));
+    assert.ok(body.body.includes('filename="retry.txt"'));
+  });
+
+  test('should recreate multipart streams for preserving redirects', async () => {
+    const formData = new FormData();
+
+    formData.append('alpha', 'redirect');
+    formData.append('upload', new File(['redirect me'], 'redirect.txt', { type: 'text/plain' }));
+
+    const response = await fetch(`${getBaseUrl()}/redirect/preserve-body`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const body = await response.json<{ method: string; body: string }>();
+
+    assert.strictEqual(body.method, 'POST');
+    assert.ok(body.body.includes('redirect me'));
+    assert.ok(body.body.includes('filename="redirect.txt"'));
+  });
+
+  test('should preserve browser-style multipart escaping and line endings', async () => {
+    const formData = new FormData();
+
+    formData.append('quoted"\nname', 'first\nsecond');
+    formData.append('upload', new File(['value'], 'quoted"\nfile.txt', { type: 'text/plain' }));
+
+    const response = await fetch(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const body = await response.json<{ body: string }>();
+
+    assert.ok(body.body.includes('name="quoted%22%0D%0Aname"'));
+    assert.ok(body.body.includes('first\r\nsecond'));
+    assert.ok(body.body.includes('filename="quoted%22%0D%0Afile.txt"'));
   });
 
   test('should support an explicit multipart boundary', async () => {

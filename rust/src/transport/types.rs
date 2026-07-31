@@ -1,3 +1,4 @@
+use crate::store::upload_store::UploadReceiver;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use wreq::Emulation;
@@ -73,7 +74,34 @@ pub enum ConnectionGroup {
     Number(u64),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
+pub enum RequestBody {
+    Bytes(Vec<u8>),
+    Multipart(MultipartBodyOptions),
+}
+
+#[derive(Debug)]
+pub struct MultipartBodyOptions {
+    pub boundary: String,
+    pub parts: Vec<MultipartPartOptions>,
+}
+
+#[derive(Debug)]
+pub enum MultipartPartOptions {
+    Text {
+        name: String,
+        value: String,
+    },
+    Stream {
+        name: String,
+        file_name: String,
+        mime_type: String,
+        length: u64,
+        receiver: UploadReceiver,
+    },
+}
+
+#[derive(Debug)]
 pub struct RequestOptions {
     pub client_id: Option<u64>,
     pub client_cache_key: Option<String>,
@@ -82,7 +110,7 @@ pub struct RequestOptions {
     pub headers: Vec<(String, String)>,
     pub orig_headers: Vec<String>,
     pub method: String,
-    pub body: Option<Vec<u8>>,
+    pub body: Option<RequestBody>,
     pub proxy: Option<String>,
     pub disable_system_proxy: bool,
     pub dns: Option<DnsOptions>,

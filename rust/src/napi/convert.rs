@@ -1,9 +1,11 @@
 use crate::emulation::resolve_emulation;
 use crate::napi::profiles::parse_browser_emulation;
+use crate::store::upload_store::take_upload_receiver;
 use crate::transport::types::{
-    CertificateAuthorityOptions, ConnectionGroup, DnsOptions, LocalBindOptions, PoolIdleTimeout,
-    RequestOptions, Response, TlsDangerOptions, TlsDebugOptions, TlsIdentityOptions,
-    TlsKeylogOptions, WebSocketConnectOptions, WebSocketConnection,
+    CertificateAuthorityOptions, ConnectionGroup, DnsOptions, LocalBindOptions,
+    MultipartBodyOptions, MultipartPartOptions, PoolIdleTimeout, RequestBody, RequestOptions,
+    Response, TlsDangerOptions, TlsDebugOptions, TlsIdentityOptions, TlsKeylogOptions,
+    WebSocketConnectOptions, WebSocketConnection,
 };
 use neon::prelude::*;
 use neon::types::buffer::TypedArray;
@@ -424,6 +426,118 @@ fn js_object_to_emulation(
     .or_else(|error| cx.throw_error(format!("{:#}", error)))
 }
 
+struct MultipartStreamDescriptor {
+    name: String,
+    file_name: String,
+    mime_type: String,
+    length: u64,
+    handle: u64,
+}
+
+enum MultipartPartDescriptor {
+    Text { name: String, value: String },
+    Stream(MultipartStreamDescriptor),
+}
+
+fn js_value_to_safe_u64(
+    cx: &mut FunctionContext,
+    value: Handle<JsValue>,
+    name: &str,
+) -> NeonResult<u64> {
+    let value = value.downcast::<JsNumber, _>(cx).or_throw(cx)?.value(cx);
+
+    if !value.is_finite()
+        || value.fract() != 0.0
+        || !(0.0..=9_007_199_254_740_991.0).contains(&value)
+    {
+        return cx.throw_type_error(format!("{name} must be a non-negative safe integer"));
+    }
+
+    Ok(value as u64)
+}
+
+fn js_object_to_multipart_body(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<Option<MultipartBodyOptions>> {
+    let Some(value) = obj.get_opt::<JsValue, _, _>(cx, "multipart")? else {
+        return Ok(None);
+    };
+    let multipart = value.downcast::<JsObject, _>(cx).or_throw(cx)?;
+    let boundary = multipart.get::<JsString, _, _>(cx, "boundary")?.value(cx);
+    let parts = multipart.get::<JsArray, _, _>(cx, "parts")?;
+    let mut descriptors = Vec::with_capacity(parts.len(cx) as usize);
+
+    for (index, value) in parts.to_vec(cx)?.into_iter().enumerate() {
+        let part = value.downcast::<JsObject, _>(cx).or_throw(cx)?;
+        let kind = part.get::<JsString, _, _>(cx, "kind")?.value(cx);
+        let name = part.get::<JsString, _, _>(cx, "name")?.value(cx);
+
+        match kind.as_str() {
+            "text" => {
+                let value = part.get::<JsString, _, _>(cx, "value")?.value(cx);
+                descriptors.push(MultipartPartDescriptor::Text { name, value });
+            }
+            "stream" => {
+                let file_name = part.get::<JsString, _, _>(cx, "fileName")?.value(cx);
+                let mime_type = part.get::<JsString, _, _>(cx, "mimeType")?.value(cx);
+                let length_value: Handle<JsValue> = part.get(cx, "length")?;
+                let length = js_value_to_safe_u64(
+                    cx,
+                    length_value,
+                    &format!("multipart.parts[{index}].length"),
+                )?;
+                let handle_value: Handle<JsValue> = part.get(cx, "uploadHandle")?;
+                let handle = js_value_to_safe_u64(
+                    cx,
+                    handle_value,
+                    &format!("multipart.parts[{index}].uploadHandle"),
+                )?;
+
+                descriptors.push(MultipartPartDescriptor::Stream(MultipartStreamDescriptor {
+                    name,
+                    file_name,
+                    mime_type,
+                    length,
+                    handle,
+                }));
+            }
+            _ => {
+                return cx.throw_type_error(format!(
+                    "multipart.parts[{index}].kind must be 'text' or 'stream'"
+                ));
+            }
+        }
+    }
+
+    let mut native_parts = Vec::with_capacity(descriptors.len());
+
+    for descriptor in descriptors {
+        match descriptor {
+            MultipartPartDescriptor::Text { name, value } => {
+                native_parts.push(MultipartPartOptions::Text { name, value });
+            }
+            MultipartPartDescriptor::Stream(stream) => {
+                let receiver = take_upload_receiver(stream.handle)
+                    .or_else(|error| cx.throw_error(error.to_string()))?;
+
+                native_parts.push(MultipartPartOptions::Stream {
+                    name: stream.name,
+                    file_name: stream.file_name,
+                    mime_type: stream.mime_type,
+                    length: stream.length,
+                    receiver,
+                });
+            }
+        }
+    }
+
+    Ok(Some(MultipartBodyOptions {
+        boundary,
+        parts: native_parts,
+    }))
+}
+
 pub(crate) fn js_object_to_request_options(
     cx: &mut FunctionContext,
     obj: Handle<JsObject>,
@@ -452,10 +566,22 @@ pub(crate) fn js_object_to_request_options(
         .transpose()?
         .unwrap_or_default();
 
-    let body = obj
+    let body_bytes = obj
         .get_opt(cx, "body")?
         .map(|value| js_value_to_bytes(cx, value))
         .transpose()?;
+    let multipart = js_object_to_multipart_body(cx, obj)?;
+
+    if body_bytes.is_some() && multipart.is_some() {
+        return cx.throw_type_error("body and multipart cannot both be provided");
+    }
+
+    let body = match (body_bytes, multipart) {
+        (Some(bytes), None) => Some(RequestBody::Bytes(bytes)),
+        (None, Some(multipart)) => Some(RequestBody::Multipart(multipart)),
+        (None, None) => None,
+        (Some(_), Some(_)) => unreachable!(),
+    };
 
     let proxy = obj
         .get_opt(cx, "proxy")?

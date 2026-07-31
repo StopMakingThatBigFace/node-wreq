@@ -75,6 +75,36 @@ export interface NativeTlsPeerInfo {
   peerCertificateChain?: Buffer[];
 }
 
+/** Text field in a native multipart request. */
+export interface NativeMultipartTextPart {
+  kind: 'text';
+  name: string;
+  value: string;
+}
+
+/** Streamed file field in a native multipart request. */
+export interface NativeMultipartStreamPart {
+  kind: 'stream';
+  name: string;
+  fileName: string;
+  mimeType: string;
+  length: number;
+  uploadHandle: number;
+}
+
+/** Multipart body assembled and streamed by the native transport. */
+export interface NativeMultipartBody {
+  boundary: string;
+  parts: Array<NativeMultipartTextPart | NativeMultipartStreamPart>;
+}
+
+/** JS-side upload pump paired with a native multipart body. */
+export interface NativeMultipartUpload {
+  body: NativeMultipartBody;
+  start(signal?: AbortSignal | null): Promise<void>;
+  cancel(reason?: unknown): void;
+}
+
 /** Fully normalized native request payload. */
 export interface NativeRequestOptions {
   /** Fully resolved request URL. */
@@ -87,6 +117,10 @@ export interface NativeRequestOptions {
   origHeaders?: string[];
   /** Encoded request body bytes. */
   body?: Buffer;
+  /** Multipart body assembled by the native transport. */
+  multipart?: NativeMultipartBody;
+  /** Internal JS upload pump; never read by the native options converter. */
+  multipartUpload?: NativeMultipartUpload;
   /** Browser fingerprint profile used by the native transport. */
   browser?: BrowserProfile;
   /** Browser profile selection strategy used by the native transport. */

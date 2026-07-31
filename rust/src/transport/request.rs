@@ -2,10 +2,49 @@ use crate::store::body_store::store_body;
 use crate::transport::client::request_client;
 use crate::transport::cookies::parse_cookie_pair;
 use crate::transport::headers::build_orig_header_map;
-use crate::transport::types::{ConnectionGroup, RequestOptions, Response, ResponseTlsInfo};
+use crate::transport::types::{
+    ConnectionGroup, MultipartBodyOptions, MultipartPartOptions, RequestBody, RequestOptions,
+    Response, ResponseTlsInfo,
+};
 use anyhow::{Context, Result};
 use std::time::Duration;
-use wreq::{redirect, tls::TlsInfo, Group, Method};
+use tokio_stream::wrappers::ReceiverStream;
+use wreq::{
+    multipart::{Form, Part},
+    redirect,
+    tls::TlsInfo,
+    Body, Group, Method,
+};
+
+fn build_multipart(options: MultipartBodyOptions) -> Result<Form> {
+    let mut form = Form::with_boundary(options.boundary).percent_encode_noop();
+
+    for part in options.parts {
+        match part {
+            MultipartPartOptions::Text { name, value } => {
+                form = form.text(name, value);
+            }
+            MultipartPartOptions::Stream {
+                name,
+                file_name,
+                mime_type,
+                length,
+                receiver,
+            } => {
+                let stream = ReceiverStream::new(receiver);
+                let body = Body::wrap_stream(stream);
+                let part = Part::stream_with_length(body, length)
+                    .file_name(file_name)
+                    .mime_str(&mime_type)
+                    .with_context(|| format!("Invalid multipart MIME type: {mime_type}"))?;
+
+                form = form.part(name, part);
+            }
+        }
+    }
+
+    Ok(form)
+}
 
 pub async fn make_request(options: RequestOptions) -> Result<Response> {
     let client = request_client(&options).await?;
@@ -65,7 +104,10 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
     }
 
     if let Some(body) = body {
-        request = request.body(body);
+        request = match body {
+            RequestBody::Bytes(bytes) => request.body(bytes),
+            RequestBody::Multipart(options) => request.multipart(build_multipart(options)?),
+        };
     }
 
     if let Some(timeout) = timeout {

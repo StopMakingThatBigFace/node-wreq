@@ -28,10 +28,10 @@ export async function mergeInputAndInit(
               method: init?.method ?? input.method,
               headers: init?.headers ?? input.headers,
               signal: init?.signal ?? input.signal ?? undefined,
-              body:
-                init?.body !== undefined
-                  ? init.body
-                  : ((await input._cloneBodyBytes()) ?? undefined),
+              body: init?.body !== undefined ? init.body : (input._cloneBodyInit() ?? undefined),
+              multipartBoundary:
+                init?.multipartBoundary ??
+                (init?.body === undefined ? input._getMultipartBoundary() : undefined),
             }
           : { ...init },
     };

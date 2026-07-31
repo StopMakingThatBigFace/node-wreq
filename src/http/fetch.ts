@@ -18,7 +18,7 @@ import {
   finalizeResponse,
   isRedirectResponse,
   resolveRedirectLocation,
-  rewriteRedirectMethodAndBody,
+  rewriteRedirectMethod,
   stripRedirectSensitiveHeaders,
   toRedirectEntry,
 } from './pipeline/redirects';
@@ -142,17 +142,18 @@ export async function fetchWithNativeClient(
           });
         }
 
-        const rewritten = rewriteRedirectMethodAndBody(
-          normalizeMethod(request.method),
-          response.status,
-          (await request._cloneBodyBytes()) ?? undefined
-        );
+        const rewritten = rewriteRedirectMethod(normalizeMethod(request.method), response.status);
 
-        const nextRequest = request._replace({
-          url: nextUrl,
-          method: rewritten.method,
-          body: rewritten.body,
-        });
+        const nextRequest = rewritten.bodyDropped
+          ? request._replace({
+              url: nextUrl,
+              method: rewritten.method,
+              body: null,
+            })
+          : request._replace({
+              url: nextUrl,
+              method: rewritten.method,
+            });
 
         stripRedirectSensitiveHeaders(
           nextRequest.headers,

@@ -14,6 +14,10 @@ export type NativeBinding = {
     promise: Promise<NativeResponse>;
   };
   cancelRequest: (handle: number) => boolean;
+  createUpload: () => number;
+  writeUploadChunk: (handle: number, chunk: Buffer) => Promise<void>;
+  failUpload: (handle: number, message: string) => Promise<void>;
+  finishUpload: (handle: number) => boolean;
   releaseClient: (clientId: number) => boolean;
   websocketConnect: (options: NativeWebSocketConnectOptions) => Promise<NativeWebSocketConnection>;
   websocketRead: (handle: number) => Promise<NativeWebSocketReadResult>;

@@ -1,4 +1,4 @@
-import type { BodyInit, HeadersInit, WreqInit } from '../types';
+import type { BodyInit, HeadersInit, NativeMultipartUpload, WreqInit } from '../types';
 import { Blob, Buffer } from 'node:buffer';
 import { ReadableStream } from 'node:stream/web';
 import { Headers } from '../headers';
@@ -162,6 +162,25 @@ export class Request {
     }
 
     return new Uint8Array(await this.#multipartBody.clone().arrayBuffer());
+  }
+
+  /** Internal helper that clones the source body without forcing multipart encoding. */
+  _cloneBodyInit(): BodyInit | null {
+    if (this.#bodyBytes !== null) {
+      return cloneBytes(this.#bodyBytes);
+    }
+
+    return this.#multipartBody?.cloneFormData() ?? null;
+  }
+
+  /** Internal helper that returns the explicit multipart boundary, when applicable. */
+  _getMultipartBoundary(): string | undefined {
+    return this.#multipartBody?.boundary;
+  }
+
+  /** Internal helper that prepares a native streaming multipart upload. */
+  _prepareMultipartUpload(): NativeMultipartUpload | undefined {
+    return this.#multipartBody?.prepareNativeUpload();
   }
 
   /** Internal helper that prepares body bytes for native dispatch. */

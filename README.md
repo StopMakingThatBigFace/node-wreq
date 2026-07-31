@@ -149,7 +149,8 @@ console.log(await response.json());
 
 `FormData` request bodies work like `fetch`. By default, `node-wreq` generates a
 `----WebKitFormBoundary...` boundary so the multipart envelope matches browser traffic as well as
-the TLS and HTTP fingerprints do.
+the TLS and HTTP fingerprints do. File parts are encoded by native `wreq` multipart support and
+streamed with backpressure instead of buffering the complete form in memory.
 
 ```ts
 const formData = new FormData();

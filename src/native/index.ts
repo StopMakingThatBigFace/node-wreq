@@ -3,9 +3,13 @@ export { getProfiles, normalizeBrowserEmulation, validateBrowserProfile } from '
 export {
   nativeCancelBody,
   nativeForbidBodyRecycle,
+  nativeCreateUpload,
+  nativeFailUpload,
+  nativeFinishUpload,
   nativeReadBodyChunk,
   nativeReleaseClient,
   nativeRequest,
+  nativeWriteUploadChunk,
 } from './request';
 
 export {

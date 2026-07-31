@@ -135,6 +135,30 @@ export function setupLocalTestServer() {
           return;
         }
 
+        if (url.pathname === '/retry/body') {
+          const key = url.searchParams.get('key') ?? 'default-body';
+          const failCount = Number(url.searchParams.get('failCount') ?? '0');
+          const count = (retryAttempts.get(key) ?? 0) + 1;
+          const body = await readRequestBody(request);
+
+          retryAttempts.set(key, count);
+
+          if (count <= failCount) {
+            sendJson(response, 503, { attempt: count });
+
+            return;
+          }
+
+          sendJson(response, 200, {
+            attempt: count,
+            body: body.toString('utf8'),
+            bodyBase64: body.toString('base64'),
+            headers: request.headers,
+          });
+
+          return;
+        }
+
         if (url.pathname === '/retry/timeout') {
           const key = url.searchParams.get('key') ?? 'default-timeout';
           const failCount = Number(url.searchParams.get('failCount') ?? '0');
@@ -354,6 +378,18 @@ export function setupLocalTestServer() {
         if (url.pathname === '/redirect/post-start') {
           response.writeHead(302, {
             location: '/redirect/final',
+          });
+
+          response.end();
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/preserve-body') {
+          await readRequestBody(request);
+
+          response.writeHead(307, {
+            location: '/body/echo',
           });
 
           response.end();
