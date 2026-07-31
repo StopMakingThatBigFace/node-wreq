@@ -1,6 +1,6 @@
 use crate::emulation::parse::{
     parse_alpn_protocol, parse_alps_protocol, parse_certificate_compression_algorithm,
-    parse_http2_setting_id, parse_pseudo_id, parse_tls_version,
+    parse_http2_setting_id, parse_key_share, parse_pseudo_id, parse_tls_version,
 };
 use crate::emulation::payload::{
     CustomHttp1Options, CustomHttp2Options, CustomHttp2Priority, CustomTlsOptions,
@@ -19,228 +19,259 @@ use wreq::{
 const DEFAULT_KEY_SHARES: &[KeyShare] =
     &[KeyShare::X25519_MLKEM768, KeyShare::X25519, KeyShare::P256];
 
-pub fn build_tls_options(options: CustomTlsOptions) -> Result<TlsOptions> {
-    let mut builder = TlsOptions::builder();
+pub fn apply_tls_options(mut base: TlsOptions, options: CustomTlsOptions) -> Result<TlsOptions> {
+    if options.key_shares.is_some() && options.key_shares_limit.is_some() {
+        bail!("Invalid emulation tlsOptions: keyShares and keySharesLimit cannot both be set");
+    }
 
     if let Some(alpn_protocols) = options.alpn_protocols {
-        builder = builder.alpn_protocols(
+        base.alpn_protocols = Some(
             alpn_protocols
                 .into_iter()
                 .map(|protocol| parse_alpn_protocol(&protocol))
-                .collect::<Result<Vec<_>>>()?,
+                .collect::<Result<Vec<_>>>()?
+                .into(),
         );
     }
 
     if let Some(alps_protocols) = options.alps_protocols {
-        builder = builder.alps_protocols(
+        base.alps_protocols = Some(
             alps_protocols
                 .into_iter()
                 .map(|protocol| parse_alps_protocol(&protocol))
-                .collect::<Result<Vec<_>>>()?,
+                .collect::<Result<Vec<_>>>()?
+                .into(),
         );
     }
 
     if let Some(value) = options.alps_use_new_codepoint {
-        builder = builder.alps_use_new_codepoint(value);
+        base.alps_use_new_codepoint = value;
     }
     if let Some(value) = options.session_ticket {
-        builder = builder.session_ticket(value);
+        base.session_ticket = value;
     }
     if let Some(value) = options.min_tls_version {
-        builder = builder.min_tls_version(Some(parse_tls_version(&value)?));
+        base.min_tls_version = Some(parse_tls_version(&value)?);
     }
     if let Some(value) = options.max_tls_version {
-        builder = builder.max_tls_version(Some(parse_tls_version(&value)?));
+        base.max_tls_version = Some(parse_tls_version(&value)?);
     }
     if let Some(value) = options.pre_shared_key {
-        builder = builder.pre_shared_key(value);
+        base.pre_shared_key = value;
     }
     if let Some(value) = options.enable_ech_grease {
-        builder = builder.enable_ech_grease(value);
+        base.enable_ech_grease = value;
     }
     if let Some(value) = options.permute_extensions {
-        builder = builder.permute_extensions(Some(value));
+        base.permute_extensions = Some(value);
     }
     if let Some(value) = options.grease_enabled {
-        builder = builder.grease_enabled(Some(value));
+        base.grease_enabled = Some(value);
     }
     if let Some(value) = options.enable_ocsp_stapling {
-        builder = builder.enable_ocsp_stapling(value);
+        base.enable_ocsp_stapling = value;
     }
     if let Some(value) = options.enable_signed_cert_timestamps {
-        builder = builder.enable_signed_cert_timestamps(value);
+        base.enable_signed_cert_timestamps = value;
     }
     if let Some(value) = options.record_size_limit {
-        builder = builder.record_size_limit(Some(value));
+        base.record_size_limit = Some(value);
     }
     if let Some(value) = options.psk_skip_session_ticket {
-        builder = builder.psk_skip_session_ticket(value);
+        base.psk_skip_session_ticket = value;
     }
     if let Some(value) = options.key_shares_limit {
         if value == 0 {
             bail!("Invalid emulation tlsOptions.keySharesLimit: must be greater than 0");
         }
 
-        builder = builder.key_shares(
-            DEFAULT_KEY_SHARES[..usize::from(value).min(DEFAULT_KEY_SHARES.len())].to_vec(),
-        );
+        let mut key_shares = base
+            .key_shares
+            .take()
+            .map(|shares| shares.into_owned())
+            .unwrap_or_else(|| DEFAULT_KEY_SHARES.to_vec());
+        key_shares.truncate(usize::from(value));
+        base.key_shares = Some(key_shares.into());
+    }
+    if let Some(key_shares) = options.key_shares {
+        let key_shares = key_shares
+            .into_iter()
+            .map(|key_share| parse_key_share(&key_share))
+            .collect::<Result<Vec<_>>>()?;
+
+        if key_shares.is_empty() {
+            bail!("Invalid emulation tlsOptions.keyShares: must not be empty");
+        }
+
+        base.key_shares = Some(key_shares.into());
     }
     if let Some(value) = options.psk_dhe_ke {
-        builder = builder.psk_dhe_ke(value);
+        base.psk_dhe_ke = value;
     }
     if let Some(value) = options.renegotiation {
-        builder = builder.renegotiation(value);
+        base.renegotiation = value;
     }
     if let Some(value) = options.delegated_credentials {
-        builder = builder.delegated_credentials(value);
+        base.delegated_credentials = Some(value.into());
     }
     if let Some(value) = options.curves_list {
-        builder = builder.curves_list(value);
+        base.curves_list = Some(value.into());
     }
     if let Some(value) = options.cipher_list {
-        builder = builder.cipher_list(value);
+        base.cipher_list = Some(value.into());
     }
     if let Some(value) = options.sigalgs_list {
-        builder = builder.sigalgs_list(value);
+        base.sigalgs_list = Some(value.into());
     }
     if let Some(value) = options.certificate_compression_algorithms {
-        builder = builder.certificate_compressors(
+        base.certificate_compressors = Some(
             value
                 .into_iter()
                 .map(|algorithm| parse_certificate_compression_algorithm(&algorithm))
-                .collect::<Result<Vec<_>>>()?,
+                .collect::<Result<Vec<_>>>()?
+                .into(),
         );
     }
     if let Some(value) = options.extension_permutation {
-        builder = builder.extension_permutation(
+        base.extension_permutation = Some(
             value
                 .into_iter()
                 .map(ExtensionType::from)
-                .collect::<Vec<_>>(),
+                .collect::<Vec<_>>()
+                .into(),
         );
     }
     if let Some(value) = options.aes_hw_override {
-        builder = builder.aes_hw_override(Some(value));
+        base.aes_hw_override = Some(value);
     }
     if let Some(value) = options.preserve_tls13_cipher_list {
-        builder = builder.preserve_tls13_cipher_list(Some(value));
+        base.preserve_tls13_cipher_list = Some(value);
     }
     if let Some(value) = options.random_aes_hw_override {
-        builder = builder.random_aes_hw_override(value);
+        base.random_aes_hw_override = value;
     }
 
-    Ok(builder.build())
+    Ok(base)
 }
 
-pub fn build_http1_options(options: CustomHttp1Options) -> Result<Http1Options> {
-    let mut builder = Http1Options::builder();
-
+pub fn apply_http1_options(
+    mut base: Http1Options,
+    options: CustomHttp1Options,
+) -> Result<Http1Options> {
     if let Some(value) = options.http09_responses {
-        builder = builder.http09_responses(value);
+        base.h09_responses = value;
     }
     if let Some(value) = options.writev {
-        builder = builder.writev(Some(value));
+        base.h1_writev = Some(value);
     }
     if let Some(value) = options.max_headers {
-        builder = builder.max_headers(value);
+        base.h1_max_headers = Some(value);
     }
     if let Some(value) = options.read_buf_exact_size {
-        builder = builder.read_buf_exact_size(Some(value));
+        base.h1_read_buf_exact_size = Some(value);
+        base.h1_max_buf_size = None;
     }
     if let Some(value) = options.max_buf_size {
         if value < 8192 {
             bail!("Invalid emulation http1Options.maxBufSize: must be at least 8192");
         }
-        builder = builder.max_buf_size(value);
+        base.h1_max_buf_size = Some(value);
+        base.h1_read_buf_exact_size = None;
     }
     if options.read_buf_exact_size.is_some() && options.max_buf_size.is_some() {
         bail!("Invalid emulation http1Options: readBufExactSize and maxBufSize cannot both be set");
     }
     if let Some(value) = options.ignore_invalid_headers_in_responses {
-        builder = builder.ignore_invalid_headers_in_responses(value);
+        base.ignore_invalid_headers_in_responses = value;
     }
     if let Some(value) = options.allow_spaces_after_header_name_in_responses {
-        builder = builder.allow_spaces_after_header_name_in_responses(value);
+        base.allow_spaces_after_header_name_in_responses = value;
     }
     if let Some(value) = options.allow_obsolete_multiline_headers_in_responses {
-        builder = builder.allow_obsolete_multiline_headers_in_responses(value);
+        base.allow_obsolete_multiline_headers_in_responses = value;
     }
 
-    Ok(builder.build())
+    Ok(base)
 }
 
-pub fn build_http2_options(options: CustomHttp2Options) -> Result<Http2Options> {
-    let mut builder = Http2Options::builder();
-
+pub fn apply_http2_options(
+    mut base: Http2Options,
+    options: CustomHttp2Options,
+) -> Result<Http2Options> {
     if let Some(value) = options.adaptive_window {
-        builder = builder.adaptive_window(value);
+        base.adaptive_window = value;
     }
     if let Some(value) = options.initial_stream_id {
-        builder = builder.initial_stream_id(Some(value));
+        base.initial_stream_id = Some(value);
     }
     if let Some(value) = options.initial_connection_window_size {
-        builder = builder.initial_connection_window_size(Some(value));
+        base.initial_conn_window_size = value;
+        base.adaptive_window = false;
     }
     if let Some(value) = options.initial_window_size {
-        builder = builder.initial_window_size(Some(value));
+        base.initial_window_size = value;
+        base.adaptive_window = false;
     }
     if let Some(value) = options.initial_max_send_streams {
-        builder = builder.initial_max_send_streams(Some(value));
+        base.initial_max_send_streams = value;
     }
     if let Some(value) = options.max_frame_size {
-        builder = builder.max_frame_size(Some(value));
+        base.max_frame_size = Some(value);
     }
     if let Some(value) = options.keep_alive_interval {
-        builder = builder.keep_alive_interval(Some(Duration::from_millis(value)));
+        base.keep_alive_interval = Some(Duration::from_millis(value));
     }
     if let Some(value) = options.keep_alive_timeout {
-        builder = builder.keep_alive_timeout(Duration::from_millis(value));
+        base.keep_alive_timeout = Duration::from_millis(value);
     }
     if let Some(value) = options.keep_alive_while_idle {
-        builder = builder.keep_alive_while_idle(value);
+        base.keep_alive_while_idle = value;
     }
     if let Some(value) = options.max_concurrent_reset_streams {
-        builder = builder.max_concurrent_reset_streams(value);
+        base.max_concurrent_reset_streams = Some(value);
     }
     if let Some(value) = options.max_send_buffer_size {
-        builder = builder.max_send_buf_size(value);
+        if value > u32::MAX as usize {
+            bail!("Invalid emulation http2Options.maxSendBufferSize: exceeds u32::MAX");
+        }
+        base.max_send_buffer_size = value;
     }
     if let Some(value) = options.max_concurrent_streams {
-        builder = builder.max_concurrent_streams(Some(value));
+        base.max_concurrent_streams = Some(value);
     }
     if let Some(value) = options.max_header_list_size {
-        builder = builder.max_header_list_size(value);
+        base.max_header_list_size = Some(value);
     }
     if let Some(value) = options.max_pending_accept_reset_streams {
-        builder = builder.max_pending_accept_reset_streams(Some(value));
+        base.max_pending_accept_reset_streams = Some(value);
     }
     if let Some(value) = options.enable_push {
-        builder = builder.enable_push(value);
+        base.enable_push = Some(value);
     }
     if let Some(value) = options.header_table_size {
-        builder = builder.header_table_size(Some(value));
+        base.header_table_size = Some(value);
     }
     if let Some(value) = options.enable_connect_protocol {
-        builder = builder.enable_connect_protocol(value);
+        base.enable_connect_protocol = Some(value);
     }
     if let Some(value) = options.no_rfc7540_priorities {
-        builder = builder.no_rfc7540_priorities(value);
+        base.no_rfc7540_priorities = Some(value);
     }
     if let Some(settings_order) = options.settings_order {
-        builder = builder.settings_order(Some(build_settings_order(settings_order)?));
+        base.settings_order = Some(build_settings_order(settings_order)?);
     }
     if let Some(pseudo_order) = options.headers_pseudo_order {
-        builder = builder.headers_pseudo_order(Some(build_pseudo_order(pseudo_order)?));
+        base.headers_pseudo_order = Some(build_pseudo_order(pseudo_order)?);
     }
     if let Some(dep) = options.headers_stream_dependency {
-        builder = builder.headers_stream_dependency(Some(StreamDependency::new(
+        base.headers_stream_dependency = Some(StreamDependency::new(
             StreamId::from(dep.dependency_id),
             dep.weight,
             dep.exclusive,
-        )));
+        ));
     }
     if let Some(priorities) = options.priorities {
-        builder = builder.priorities(Some(build_priorities(priorities)?));
+        base.priorities = Some(build_priorities(priorities)?);
     }
     if let Some(experimental_settings) = options.experimental_settings {
         if !experimental_settings.is_empty() {
@@ -250,7 +281,7 @@ pub fn build_http2_options(options: CustomHttp2Options) -> Result<Http2Options> 
         }
     }
 
-    Ok(builder.build())
+    Ok(base)
 }
 
 fn build_pseudo_order(pseudo_order: Vec<String>) -> Result<PseudoOrder> {
@@ -313,4 +344,44 @@ fn build_priorities(priorities: Vec<CustomHttp2Priority>) -> Result<Priorities> 
     }
 
     Ok(builder.build())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tls_overrides_preserve_profile_defaults_and_limit_profile_key_shares() {
+        let mut base = TlsOptions::default();
+        base.session_ticket = false;
+        base.key_shares = Some(vec![KeyShare::X25519, KeyShare::P256].into());
+        let custom = CustomTlsOptions {
+            grease_enabled: Some(true),
+            key_shares_limit: Some(1),
+            ..Default::default()
+        };
+
+        let merged = apply_tls_options(base, custom).expect("TLS options should merge");
+
+        assert!(!merged.session_ticket);
+        assert_eq!(merged.grease_enabled, Some(true));
+        assert_eq!(
+            merged.key_shares.as_deref(),
+            Some([KeyShare::X25519].as_slice())
+        );
+    }
+
+    #[test]
+    fn explicit_key_shares_and_limit_are_mutually_exclusive() {
+        let custom = CustomTlsOptions {
+            key_shares: Some(vec!["X25519".to_string()]),
+            key_shares_limit: Some(1),
+            ..Default::default()
+        };
+
+        let error = apply_tls_options(TlsOptions::default(), custom)
+            .expect_err("conflicting key-share options should fail");
+
+        assert!(error.to_string().contains("cannot both be set"));
+    }
 }

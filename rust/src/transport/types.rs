@@ -62,7 +62,21 @@ pub struct LocalBindOptions {
 }
 
 #[derive(Debug, Clone)]
+pub enum PoolIdleTimeout {
+    Disabled,
+    Millis(u64),
+}
+
+#[derive(Debug, Clone)]
+pub enum ConnectionGroup {
+    Name(String),
+    Number(u64),
+}
+
+#[derive(Debug, Clone)]
 pub struct RequestOptions {
+    pub client_id: Option<u64>,
+    pub client_cache_key: Option<String>,
     pub url: String,
     pub emulation: Emulation,
     pub headers: Vec<(String, String)>,
@@ -75,6 +89,10 @@ pub struct RequestOptions {
     pub timeout: Option<u64>,
     pub read_timeout: Option<u64>,
     pub connect_timeout: Option<u64>,
+    pub pool_idle_timeout: Option<PoolIdleTimeout>,
+    pub pool_max_idle_per_host: Option<usize>,
+    pub pool_max_size: Option<usize>,
+    pub tls_session_cache_capacity: Option<usize>,
     pub disable_default_headers: bool,
     pub compress: bool,
     pub http1_only: bool,
@@ -84,6 +102,8 @@ pub struct RequestOptions {
     pub certificate_authority: Option<CertificateAuthorityOptions>,
     pub tls_debug: Option<TlsDebugOptions>,
     pub tls_danger: Option<TlsDangerOptions>,
+    pub connection_group: Option<ConnectionGroup>,
+    pub forbid_connection_reuse: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +119,8 @@ pub struct Response {
 
 #[derive(Debug, Clone)]
 pub struct WebSocketConnectOptions {
+    pub client_id: Option<u64>,
+    pub client_cache_key: Option<String>,
     pub url: String,
     pub emulation: Emulation,
     pub headers: Vec<(String, String)>,
@@ -107,9 +129,14 @@ pub struct WebSocketConnectOptions {
     pub disable_system_proxy: bool,
     pub dns: Option<DnsOptions>,
     pub timeout: Option<u64>,
+    pub pool_idle_timeout: Option<PoolIdleTimeout>,
+    pub pool_max_idle_per_host: Option<usize>,
+    pub pool_max_size: Option<usize>,
+    pub tls_session_cache_capacity: Option<usize>,
     pub disable_default_headers: bool,
     pub protocols: Vec<String>,
     pub force_http2: bool,
+    pub http_version: Option<wreq::Version>,
     pub read_buffer_size: Option<usize>,
     pub write_buffer_size: Option<usize>,
     pub max_write_buffer_size: Option<usize>,

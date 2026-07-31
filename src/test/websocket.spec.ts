@@ -156,6 +156,25 @@ describe('websocket', () => {
     );
   });
 
+  test('should support explicit WebSocket HTTP version selection', async () => {
+    const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      httpVersion: '1.1',
+    });
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000, 'done');
+
+    await closePromise;
+
+    const conflicting = new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      forceHttp2: true,
+      httpVersion: '1.1',
+    });
+
+    await assert.rejects(conflicting.opened, /forceHttp2 conflicts with httpVersion/);
+  });
+
   test('should expose negotiated websocket extensions as a string', async () => {
     const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws');
 

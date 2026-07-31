@@ -55,6 +55,40 @@ describe('http client', () => {
     }
   });
 
+  test('should support fixed platform and automatic emulation selection', async () => {
+    for (const browser of [
+      { profile: 'chrome_149', platform: 'windows' },
+      { mode: 'random' },
+      { mode: 'weighted-random' },
+    ] as const) {
+      const response = await fetch(`${getBaseUrl()}/headers/raw`, { browser });
+      const data = await response.json<{ headers: Record<string, string> }>();
+
+      assert.ok(data.headers['user-agent']);
+    }
+
+    await assert.rejects(
+      fetch(`${getBaseUrl()}/headers/raw`, {
+        browser: { mode: 'weighted-random', profile: 'chrome_149' },
+      }),
+      /cannot be used with mode weighted-random/
+    );
+
+    const withoutProfileHeaders = await fetch(`${getBaseUrl()}/headers/raw`, {
+      browser: {
+        profile: 'chrome_149',
+        http2: false,
+        headers: false,
+      },
+    });
+
+    const withoutProfileHeadersBody = await withoutProfileHeaders.json<{
+      headers: Record<string, string>;
+    }>();
+
+    assert.strictEqual(withoutProfileHeadersBody.headers['user-agent'], undefined);
+  });
+
   test('should handle timeout errors', async () => {
     await assert.rejects(
       async () => {
@@ -180,6 +214,55 @@ describe('http client', () => {
 
     assert.strictEqual((await deleteResponse.json<{ method: string }>()).method, 'DELETE');
     assert.strictEqual(headResponse.status, 200);
+    client.close();
+  });
+
+  test('should reuse and partition native pooled connections', async () => {
+    const client = createClient({ baseURL: getBaseUrl(), http1Only: true });
+
+    const readConnectionId = async (init?: {
+      connectionGroup?: string;
+      forbidConnectionReuse?: boolean;
+    }) => {
+      const response = await client.get('/connection/id', init);
+
+      return (await response.json<{ connectionId: number }>()).connectionId;
+    };
+
+    const first = await readConnectionId({ connectionGroup: 'primary' });
+    const reused = await readConnectionId({ connectionGroup: 'primary' });
+    const isolated = await readConnectionId({ connectionGroup: 'isolated' });
+
+    assert.strictEqual(reused, first);
+    assert.notStrictEqual(isolated, first);
+
+    const poisoned = await readConnectionId({
+      connectionGroup: 'primary',
+      forbidConnectionReuse: true,
+    });
+
+    const replacement = await readConnectionId({ connectionGroup: 'primary' });
+
+    assert.strictEqual(poisoned, first);
+    assert.notStrictEqual(replacement, first);
+
+    const dynamicResponse = await client.get('/connection/id', {
+      connectionGroup: 'primary',
+    });
+
+    assert.strictEqual(dynamicResponse.wreq.forbidConnectionReuse(), true);
+
+    const dynamicallyPoisoned = (await dynamicResponse.json<{ connectionId: number }>())
+      .connectionId;
+
+    const dynamicReplacement = await readConnectionId({ connectionGroup: 'primary' });
+
+    assert.strictEqual(dynamicallyPoisoned, replacement);
+    assert.notStrictEqual(dynamicReplacement, replacement);
+
+    client.close();
+
+    await assert.rejects(client.get('/connection/id'), /Client is closed/);
   });
 
   test('should support http1Only and reject conflicting protocol forcing', async () => {
@@ -383,7 +466,7 @@ describe('http client', () => {
       browser: 'chrome_137',
       tlsOptions: {
         greaseEnabled: true,
-        keySharesLimit: 2,
+        keyShares: ['X25519_MLKEM768', 'X25519', 'P256'],
         certificateCompressionAlgorithms: ['brotli', 'zlib', 'zstd'],
       },
       http1Options: {
@@ -396,6 +479,16 @@ describe('http client', () => {
     });
 
     assert.strictEqual(response.status, 200);
+
+    await assert.rejects(
+      fetch(`${getBaseUrl()}/headers/raw`, {
+        tlsOptions: {
+          keyShares: ['X25519'],
+          keySharesLimit: 1,
+        },
+      }),
+      /keyShares and keySharesLimit cannot both be set/
+    );
   });
 
   test('should reject HTTP/2 experimental settings removed by upstream', async () => {

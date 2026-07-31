@@ -1,4 +1,5 @@
 use crate::napi::convert::{js_object_to_request_options, response_to_js_object};
+use crate::store::client_store::remove_clients;
 use crate::store::request_store::{
     cancel_request as cancel_request_handle, insert_request, remove_request,
 };
@@ -46,8 +47,22 @@ fn cancel_request(mut cx: FunctionContext) -> JsResult<JsBoolean> {
     Ok(cx.boolean(cancel_request_handle(handle)))
 }
 
+fn release_client(mut cx: FunctionContext) -> JsResult<JsBoolean> {
+    let owner = cx.argument::<JsNumber>(0)?.value(&mut cx);
+
+    if !owner.is_finite()
+        || owner.fract() != 0.0
+        || !(0.0..=9_007_199_254_740_991.0).contains(&owner)
+    {
+        return cx.throw_type_error("client id must be a non-negative safe integer");
+    }
+
+    Ok(cx.boolean(remove_clients(owner as u64)))
+}
+
 pub fn register(cx: &mut ModuleContext) -> NeonResult<()> {
     cx.export_function("request", request)?;
     cx.export_function("cancelRequest", cancel_request)?;
+    cx.export_function("releaseClient", release_client)?;
     Ok(())
 }

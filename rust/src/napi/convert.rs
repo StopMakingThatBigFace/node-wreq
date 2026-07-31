@@ -1,9 +1,9 @@
 use crate::emulation::resolve_emulation;
 use crate::napi::profiles::parse_browser_emulation;
 use crate::transport::types::{
-    CertificateAuthorityOptions, DnsOptions, LocalBindOptions, RequestOptions, Response,
-    TlsDangerOptions, TlsDebugOptions, TlsIdentityOptions, TlsKeylogOptions,
-    WebSocketConnectOptions, WebSocketConnection,
+    CertificateAuthorityOptions, ConnectionGroup, DnsOptions, LocalBindOptions, PoolIdleTimeout,
+    RequestOptions, Response, TlsDangerOptions, TlsDebugOptions, TlsIdentityOptions,
+    TlsKeylogOptions, WebSocketConnectOptions, WebSocketConnection,
 };
 use neon::prelude::*;
 use neon::types::buffer::TypedArray;
@@ -36,6 +36,107 @@ fn js_value_to_positive_usize(
     }
 
     Ok(value.ceil() as usize)
+}
+
+fn js_value_to_non_negative_usize(
+    cx: &mut FunctionContext,
+    value: Handle<JsValue>,
+    name: &str,
+) -> NeonResult<usize> {
+    let value = value.downcast::<JsNumber, _>(cx).or_throw(cx)?.value(cx);
+
+    if !value.is_finite() || value < 0.0 || value.fract() != 0.0 {
+        return cx.throw_type_error(format!("{name} must be a finite non-negative integer"));
+    }
+    if value > usize::MAX as f64 {
+        return cx.throw_type_error(format!("{name} exceeds the supported range"));
+    }
+
+    Ok(value as usize)
+}
+
+fn js_object_to_client_identity(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<(Option<u64>, Option<String>)> {
+    let client_id = obj
+        .get_opt(cx, "clientId")?
+        .map(|value: Handle<JsValue>| {
+            let value = value.downcast::<JsNumber, _>(cx).or_throw(cx)?.value(cx);
+
+            if !value.is_finite()
+                || value.fract() != 0.0
+                || !(0.0..=9_007_199_254_740_991.0).contains(&value)
+            {
+                return cx.throw_type_error("clientId must be a non-negative safe integer");
+            }
+
+            Ok(value as u64)
+        })
+        .transpose()?;
+    let cache_key = obj
+        .get_opt(cx, "clientCacheKey")?
+        .map(|value: Handle<JsValue>| value.downcast::<JsString, _>(cx).or_throw(cx))
+        .transpose()?
+        .map(|value| value.value(cx));
+
+    if client_id.is_some() != cache_key.is_some() {
+        return cx.throw_type_error("clientId and clientCacheKey must be provided together");
+    }
+
+    Ok((client_id, cache_key))
+}
+
+fn js_object_to_pool_idle_timeout(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<Option<PoolIdleTimeout>> {
+    let Some(value) = obj.get_opt::<JsValue, _, _>(cx, "poolIdleTimeout")? else {
+        return Ok(None);
+    };
+
+    if let Ok(value) = value.downcast::<JsBoolean, _>(cx) {
+        if value.value(cx) {
+            return cx.throw_type_error("poolIdleTimeout only accepts false or milliseconds");
+        }
+
+        return Ok(Some(PoolIdleTimeout::Disabled));
+    }
+
+    Ok(Some(PoolIdleTimeout::Millis(js_value_to_timeout_ms(
+        cx, value,
+    )?)))
+}
+
+fn js_object_to_connection_group(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<Option<ConnectionGroup>> {
+    let Some(value) = obj.get_opt::<JsValue, _, _>(cx, "connectionGroup")? else {
+        return Ok(None);
+    };
+
+    if let Ok(value) = value.downcast::<JsString, _>(cx) {
+        let value = value.value(cx);
+
+        if value.is_empty() {
+            return cx.throw_type_error("connectionGroup must not be empty");
+        }
+
+        return Ok(Some(ConnectionGroup::Name(value)));
+    }
+
+    let value = value.downcast::<JsNumber, _>(cx).or_throw(cx)?.value(cx);
+
+    if !value.is_finite()
+        || value.fract() != 0.0
+        || !(0.0..=9_007_199_254_740_991.0).contains(&value)
+    {
+        return cx
+            .throw_type_error("connectionGroup must be a string or non-negative safe integer");
+    }
+
+    Ok(Some(ConnectionGroup::Number(value as u64)))
 }
 
 fn js_value_to_non_negative_timeout_ms(
@@ -281,29 +382,57 @@ pub(crate) fn js_value_to_header_tuples(
     Ok(tuples)
 }
 
+fn js_object_to_emulation(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<wreq::Emulation> {
+    let browser = obj
+        .get_opt(cx, "browser")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
+        .map(|v| v.value(cx))
+        .unwrap_or_else(|| "chrome_149".to_string());
+    let mode = obj
+        .get_opt(cx, "browserMode")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
+        .map(|v| v.value(cx))
+        .unwrap_or_else(|| "fixed".to_string());
+    let platform = obj
+        .get_opt(cx, "browserPlatform")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
+        .map(|v| v.value(cx));
+    let http2 = obj
+        .get_opt(cx, "browserHttp2")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsBoolean, _>(cx).ok())
+        .map(|v| v.value(cx));
+    let headers = obj
+        .get_opt(cx, "browserHeaders")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsBoolean, _>(cx).ok())
+        .map(|v| v.value(cx));
+    let emulation_json = obj
+        .get_opt(cx, "emulationJson")?
+        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
+        .map(|v| v.value(cx));
+
+    resolve_emulation(
+        parse_browser_emulation(&browser),
+        &mode,
+        platform.as_deref(),
+        http2,
+        headers,
+        emulation_json.as_deref(),
+    )
+    .or_else(|error| cx.throw_error(format!("{:#}", error)))
+}
+
 pub(crate) fn js_object_to_request_options(
     cx: &mut FunctionContext,
     obj: Handle<JsObject>,
 ) -> NeonResult<RequestOptions> {
     let url: Handle<JsString> = obj.get(cx, "url")?;
     let url = url.value(cx);
+    let (client_id, client_cache_key) = js_object_to_client_identity(cx, obj)?;
 
-    let browser_str = obj
-        .get_opt(cx, "browser")?
-        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
-        .map(|v| v.value(cx))
-        .unwrap_or_else(|| "chrome_149".to_string());
-
-    let emulation_json = obj
-        .get_opt(cx, "emulationJson")?
-        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
-        .map(|v| v.value(cx));
-
-    let emulation = resolve_emulation(
-        parse_browser_emulation(&browser_str),
-        emulation_json.as_deref(),
-    )
-    .or_else(|error| cx.throw_error(format!("{:#}", error)))?;
+    let emulation = js_object_to_emulation(cx, obj)?;
 
     let method = obj
         .get_opt(cx, "method")?
@@ -341,6 +470,19 @@ pub(crate) fn js_object_to_request_options(
     let timeout = js_value_to_non_negative_timeout_ms(cx, obj, "timeout")?;
     let read_timeout = js_value_to_non_negative_timeout_ms(cx, obj, "readTimeout")?;
     let connect_timeout = js_value_to_non_negative_timeout_ms(cx, obj, "connectTimeout")?;
+    let pool_idle_timeout = js_object_to_pool_idle_timeout(cx, obj)?;
+    let pool_max_idle_per_host = obj
+        .get_opt(cx, "poolMaxIdlePerHost")?
+        .map(|value| js_value_to_non_negative_usize(cx, value, "poolMaxIdlePerHost"))
+        .transpose()?;
+    let pool_max_size = obj
+        .get_opt(cx, "poolMaxSize")?
+        .map(|value| js_value_to_positive_usize(cx, value, "poolMaxSize"))
+        .transpose()?;
+    let tls_session_cache_capacity = obj
+        .get_opt(cx, "tlsSessionCacheCapacity")?
+        .map(|value| js_value_to_positive_usize(cx, value, "tlsSessionCacheCapacity"))
+        .transpose()?;
 
     let timeout = match timeout {
         Some(0) => None,
@@ -384,8 +526,16 @@ pub(crate) fn js_object_to_request_options(
     let certificate_authority = js_object_to_certificate_authority_options(cx, obj)?;
     let tls_debug = js_object_to_tls_debug_options(cx, obj)?;
     let tls_danger = js_object_to_tls_danger_options(cx, obj)?;
+    let connection_group = js_object_to_connection_group(cx, obj)?;
+    let forbid_connection_reuse = obj
+        .get_opt(cx, "forbidConnectionReuse")?
+        .and_then(|value: Handle<JsValue>| value.downcast::<JsBoolean, _>(cx).ok())
+        .map(|value| value.value(cx))
+        .unwrap_or(false);
 
     Ok(RequestOptions {
+        client_id,
+        client_cache_key,
         url,
         emulation,
         headers,
@@ -398,6 +548,10 @@ pub(crate) fn js_object_to_request_options(
         timeout,
         read_timeout,
         connect_timeout,
+        pool_idle_timeout,
+        pool_max_idle_per_host,
+        pool_max_size,
+        tls_session_cache_capacity,
         disable_default_headers,
         compress,
         http1_only,
@@ -407,6 +561,8 @@ pub(crate) fn js_object_to_request_options(
         certificate_authority,
         tls_debug,
         tls_danger,
+        connection_group,
+        forbid_connection_reuse,
     })
 }
 
@@ -416,23 +572,9 @@ pub(crate) fn js_object_to_websocket_options(
 ) -> NeonResult<WebSocketConnectOptions> {
     let url: Handle<JsString> = obj.get(cx, "url")?;
     let url = url.value(cx);
+    let (client_id, client_cache_key) = js_object_to_client_identity(cx, obj)?;
 
-    let browser_str = obj
-        .get_opt(cx, "browser")?
-        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
-        .map(|v| v.value(cx))
-        .unwrap_or_else(|| "chrome_149".to_string());
-
-    let emulation_json = obj
-        .get_opt(cx, "emulationJson")?
-        .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
-        .map(|v| v.value(cx));
-
-    let emulation = resolve_emulation(
-        parse_browser_emulation(&browser_str),
-        emulation_json.as_deref(),
-    )
-    .or_else(|error| cx.throw_error(format!("{:#}", error)))?;
+    let emulation = js_object_to_emulation(cx, obj)?;
 
     let headers = obj
         .get_opt(cx, "headers")?
@@ -466,6 +608,19 @@ pub(crate) fn js_object_to_websocket_options(
         Some(timeout) => Some(timeout),
         None => Some(30000),
     };
+    let pool_idle_timeout = js_object_to_pool_idle_timeout(cx, obj)?;
+    let pool_max_idle_per_host = obj
+        .get_opt(cx, "poolMaxIdlePerHost")?
+        .map(|value| js_value_to_non_negative_usize(cx, value, "poolMaxIdlePerHost"))
+        .transpose()?;
+    let pool_max_size = obj
+        .get_opt(cx, "poolMaxSize")?
+        .map(|value| js_value_to_positive_usize(cx, value, "poolMaxSize"))
+        .transpose()?;
+    let tls_session_cache_capacity = obj
+        .get_opt(cx, "tlsSessionCacheCapacity")?
+        .map(|value| js_value_to_positive_usize(cx, value, "tlsSessionCacheCapacity"))
+        .transpose()?;
 
     let disable_default_headers = obj
         .get_opt(cx, "disableDefaultHeaders")?
@@ -486,6 +641,16 @@ pub(crate) fn js_object_to_websocket_options(
         .and_then(|v: Handle<JsValue>| v.downcast::<JsBoolean, _>(cx).ok())
         .map(|v| v.value(cx))
         .unwrap_or(false);
+    let http_version = obj
+        .get_opt(cx, "httpVersion")?
+        .map(|value: Handle<JsValue>| value.downcast::<JsString, _>(cx).or_throw(cx))
+        .transpose()?
+        .map(|value| match value.value(cx).as_str() {
+            "1.1" => Ok(wreq::Version::HTTP_11),
+            "2" => Ok(wreq::Version::HTTP_2),
+            _ => cx.throw_type_error("httpVersion must be '1.1' or '2'"),
+        })
+        .transpose()?;
     let read_buffer_size = obj
         .get_opt(cx, "readBufferSize")?
         .map(|v| js_value_to_positive_usize(cx, v, "readBufferSize"))
@@ -517,6 +682,8 @@ pub(crate) fn js_object_to_websocket_options(
     let tls_danger = js_object_to_tls_danger_options(cx, obj)?;
 
     Ok(WebSocketConnectOptions {
+        client_id,
+        client_cache_key,
         url,
         emulation,
         headers,
@@ -525,9 +692,14 @@ pub(crate) fn js_object_to_websocket_options(
         disable_system_proxy,
         dns,
         timeout,
+        pool_idle_timeout,
+        pool_max_idle_per_host,
+        pool_max_size,
+        tls_session_cache_capacity,
         disable_default_headers,
         protocols,
         force_http2,
+        http_version,
         read_buffer_size,
         write_buffer_size,
         max_write_buffer_size,

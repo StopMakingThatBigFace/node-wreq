@@ -1,4 +1,5 @@
 import type {
+  BrowserEmulation,
   BrowserProfile,
   CertificateAuthority,
   CookieJar,
@@ -24,14 +25,22 @@ export interface WebSocketInit {
   baseURL?: string;
   /** Query parameters appended to the final WebSocket URL. */
   query?: Record<string, string | number | boolean | null | undefined>;
-  /** Browser fingerprint profile used by the native transport. */
-  browser?: BrowserProfile;
+  /** Browser fingerprint profile or automatic profile selection strategy. */
+  browser?: BrowserEmulation;
   /** Explicit proxy URL, or `false` to disable proxies entirely. */
   proxy?: string | false;
   /** DNS overrides used for hostname resolution. */
   dns?: DnsOptions;
   /** Handshake timeout in milliseconds. */
   timeout?: number;
+  /** Maximum idle time for pooled connections, or `false` to disable idle expiry. */
+  poolIdleTimeout?: number | false;
+  /** Maximum idle pooled connections retained per origin. */
+  poolMaxIdlePerHost?: number;
+  /** Maximum total connections retained by the native client pool. */
+  poolMaxSize?: number;
+  /** Per-origin capacity of the native TLS session cache. */
+  tlsSessionCacheCapacity?: number;
   /** Cookie jar used to populate the handshake request. */
   cookieJar?: CookieJar;
   /** Disables headers normally injected by the library. */
@@ -54,7 +63,11 @@ export interface WebSocketInit {
   protocols?: string | string[];
   /** Binary representation used for incoming binary messages. */
   binaryType?: WebSocketBinaryType;
-  /** Forces the handshake to use HTTP/2 where supported. */
+  /** Explicit HTTP version used for the WebSocket handshake. */
+  httpVersion?: '1.1' | '2';
+  /** Forces the handshake to use HTTP/2 where supported.
+   * @deprecated Use `httpVersion: '2'` instead.
+   */
   forceHttp2?: boolean;
   /** Read buffer size used by the native socket implementation. */
   readBufferSize?: number;
@@ -86,6 +99,14 @@ export interface NativeWebSocketConnectOptions {
   origHeaders?: string[];
   /** Browser fingerprint profile used by the native transport. */
   browser?: BrowserProfile;
+  /** Browser profile selection strategy used by the native transport. */
+  browserMode?: 'fixed' | 'random' | 'weighted-random';
+  /** Operating-system identity paired with a fixed browser profile. */
+  browserPlatform?: 'windows' | 'macos' | 'linux' | 'android' | 'ios';
+  /** Whether the profile's HTTP/2 fingerprint settings are applied. */
+  browserHttp2?: boolean;
+  /** Whether the profile's default headers and ordering are applied. */
+  browserHeaders?: boolean;
   /** Serialized emulation options passed to the native layer. */
   emulationJson?: string;
   /** Proxy URL used for the connection. */
@@ -96,6 +117,18 @@ export interface NativeWebSocketConnectOptions {
   dns?: import('./native').NativeDnsOptions;
   /** Handshake timeout in milliseconds. */
   timeout?: number;
+  /** Maximum idle time for pooled connections, or `false` to disable idle expiry. */
+  poolIdleTimeout?: number | false;
+  /** Maximum idle pooled connections retained per origin. */
+  poolMaxIdlePerHost?: number;
+  /** Maximum total connections retained by the native client pool. */
+  poolMaxSize?: number;
+  /** Per-origin capacity of the native TLS session cache. */
+  tlsSessionCacheCapacity?: number;
+  /** Internal owner id for reusable native clients. */
+  clientId?: number;
+  /** Internal transport-configuration key for reusable native clients. */
+  clientCacheKey?: string;
   /** Disables headers normally injected by the library. */
   disableDefaultHeaders?: boolean;
   /** Client certificate identity used for mTLS. */
@@ -110,6 +143,8 @@ export interface NativeWebSocketConnectOptions {
   protocols: string[];
   /** Forces the handshake to use HTTP/2 where supported. */
   forceHttp2?: boolean;
+  /** Explicit HTTP version used for the WebSocket handshake. */
+  httpVersion?: '1.1' | '2';
   /** Read buffer size used by the native socket implementation. */
   readBufferSize?: number;
   /** Write buffer size used by the native socket implementation. */

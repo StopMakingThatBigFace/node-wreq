@@ -1,6 +1,30 @@
+import type { BrowserProfile } from '../config/generated/browser-profiles';
 import type { Buffer } from 'node:buffer';
 
 export type { BrowserProfile } from '../config/generated/browser-profiles';
+
+/** Operating-system identity paired with a browser emulation profile. */
+export type BrowserPlatform = 'windows' | 'macos' | 'linux' | 'android' | 'ios';
+
+/** Browser profile selection strategy. */
+export type BrowserEmulationMode = 'fixed' | 'random' | 'weighted-random';
+
+/** Advanced browser emulation selection. */
+export interface BrowserEmulationOptions {
+  /** Selection strategy. Weighted random approximates real-world browser traffic. */
+  mode?: BrowserEmulationMode;
+  /** Fixed profile. Only valid when `mode` is `fixed` or omitted. */
+  profile?: BrowserProfile;
+  /** Platform identity. Only valid when `mode` is `fixed` or omitted. */
+  platform?: BrowserPlatform;
+  /** Applies the profile's HTTP/2 fingerprint settings. */
+  http2?: boolean;
+  /** Applies the profile's default headers and header ordering. */
+  headers?: boolean;
+}
+
+/** Browser fingerprint selection accepted by requests and clients. */
+export type BrowserEmulation = BrowserProfile | BrowserEmulationOptions;
 
 /** Supported HTTP methods. */
 export type HttpMethod =
@@ -135,6 +159,8 @@ export interface TlsOptions {
   pskSkipSessionTicket?: boolean;
   /** Limits the number of key shares sent in the handshake. */
   keySharesLimit?: number;
+  /** Explicit ordered TLS 1.3 key-share groups. */
+  keyShares?: TlsKeyShare[];
   /** Enables PSK with DHE key exchange. */
   pskDheKe?: boolean;
   /** Enables TLS renegotiation where supported. */
@@ -158,6 +184,19 @@ export interface TlsOptions {
   /** Randomizes the AES hardware acceleration override. */
   randomAesHwOverride?: boolean;
 }
+
+/** TLS 1.3 key-share group exposed by the native TLS backend. */
+export type TlsKeyShare =
+  | 'P256'
+  | 'P384'
+  | 'P521'
+  | 'X25519'
+  | 'X25519_MLKEM768'
+  | 'X25519_KYBER768_DRAFT00'
+  | 'P256_KYBER768_DRAFT00'
+  | 'MLKEM1024'
+  | 'FFDHE2048'
+  | 'FFDHE3072';
 
 /** Client identity loaded from PEM-encoded certificate and key material. */
 export interface TlsIdentityPem {

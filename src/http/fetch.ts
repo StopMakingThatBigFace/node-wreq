@@ -26,6 +26,15 @@ import { runRetryDelay, shouldRetryRequest } from './pipeline/retries';
 
 /** Performs an HTTP request using the native transport pipeline. */
 export async function fetch(input: RequestInput, init?: WreqInit) {
+  return fetchWithNativeClient(input, init);
+}
+
+/** @internal Performs a request using a reusable native client owner. */
+export async function fetchWithNativeClient(
+  input: RequestInput,
+  init?: WreqInit,
+  clientId?: number
+) {
   const merged = await mergeInputAndInit(input, init);
   const state = (merged.init.context ? { ...merged.init.context } : {}) as Record<string, unknown>;
 
@@ -63,7 +72,7 @@ export async function fetch(input: RequestInput, init?: WreqInit) {
       let response =
         shortCircuit ??
         (await dispatchNativeRequest(
-          await buildNativeRequest(request, options),
+          await buildNativeRequest(request, options, clientId),
           startTime,
           options.signal
         ));

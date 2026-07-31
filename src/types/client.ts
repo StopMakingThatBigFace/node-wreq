@@ -67,4 +67,7 @@ export interface Client {
 
   /** Creates a new client with merged defaults. */
   extend(defaults: ClientDefaults): Client;
+
+  /** Releases pooled native connections owned by this client. */
+  close(): void;
 }

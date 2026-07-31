@@ -45,6 +45,8 @@ pub struct CustomTlsOptions {
     #[serde(default)]
     pub key_shares_limit: Option<u8>,
     #[serde(default)]
+    pub key_shares: Option<Vec<String>>,
+    #[serde(default)]
     pub psk_dhe_ke: Option<bool>,
     #[serde(default)]
     pub renegotiation: Option<bool>,

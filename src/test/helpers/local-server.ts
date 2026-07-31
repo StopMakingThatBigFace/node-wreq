@@ -58,6 +58,8 @@ export function setupLocalTestServer() {
   let localServer: Server | undefined;
   let wsServer: WebSocketServer | undefined;
   const retryAttempts = new Map<string, number>();
+  const connectionIds = new WeakMap<object, number>();
+  let nextConnectionId = 1;
 
   before(async () => {
     wsServer = new WebSocketServer({
@@ -100,6 +102,20 @@ export function setupLocalTestServer() {
     localServer = createServer((request, response) => {
       void (async () => {
         const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+
+        if (url.pathname === '/connection/id') {
+          let connectionId = connectionIds.get(request.socket);
+
+          if (connectionId === undefined) {
+            connectionId = nextConnectionId;
+            nextConnectionId += 1;
+            connectionIds.set(request.socket, connectionId);
+          }
+
+          sendJson(response, 200, { connectionId });
+
+          return;
+        }
 
         if (url.pathname === '/retry') {
           const key = url.searchParams.get('key') ?? 'default';

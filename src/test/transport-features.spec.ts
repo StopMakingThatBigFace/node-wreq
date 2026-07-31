@@ -28,8 +28,8 @@ describe('transport features', () => {
 
     assert.match(
       body.headers['content-type'],
-      /^multipart\/form-data; boundary=/,
-      'multipart bodies should set a valid content-type boundary'
+      /^multipart\/form-data; boundary=----WebKitFormBoundary[0-9A-Za-z]{16}$/,
+      'multipart bodies should use a WebKit-style boundary'
     );
 
     assert.ok(body.body.includes('name="alpha"'), 'multipart payload should include text fields');
@@ -43,6 +43,28 @@ describe('transport features', () => {
       body.body.includes('hello multipart'),
       'multipart payload should include file contents'
     );
+  });
+
+  test('should support an explicit multipart boundary', async () => {
+    const formData = new FormData();
+
+    formData.append('alpha', 'custom-boundary');
+
+    const response = await fetch(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: formData,
+      multipartBoundary: '----node-wreq-test-boundary',
+    });
+
+    const body = await response.json<{ body: string; headers: Record<string, string> }>();
+
+    assert.strictEqual(
+      body.headers['content-type'],
+      'multipart/form-data; boundary=----node-wreq-test-boundary'
+    );
+
+    assert.ok(body.body.startsWith('------node-wreq-test-boundary\r\n'));
+    assert.ok(body.body.endsWith('------node-wreq-test-boundary--\r\n'));
   });
 
   test('should preserve multipart request bodies when cloning requests', async () => {

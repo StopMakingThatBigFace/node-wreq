@@ -77,3 +77,14 @@ pub fn read_body_chunk(handle: u64, _size: usize) -> Result<(Vec<u8>, bool)> {
 pub fn cancel_body(handle: u64) -> bool {
     remove_body(handle).is_some()
 }
+
+pub fn forbid_body_recycle(handle: u64) -> Result<bool> {
+    let body = get_body(handle)?;
+    let body = body
+        .try_lock()
+        .map_err(|_| anyhow::anyhow!("Response body is currently being consumed"))?;
+
+    body.response.forbid_recycle();
+
+    Ok(true)
+}

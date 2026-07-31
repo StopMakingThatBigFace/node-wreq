@@ -13,7 +13,7 @@ import { ReadableStream } from 'node:stream/web';
 import { TextDecoder } from 'node:util';
 import { RequestError, TimeoutError } from '../errors';
 import { Headers } from '../headers';
-import { nativeCancelBody, nativeReadBodyChunk } from '../native/index';
+import { nativeCancelBody, nativeForbidBodyRecycle, nativeReadBodyChunk } from '../native/index';
 import { cloneBytes, toBodyBytes } from './body/bytes';
 import { parseResponseFormData } from './body/form-data';
 import { ResponseMeta } from './response-meta';
@@ -186,6 +186,15 @@ export class Response {
     this._timings = { ...timings };
 
     return this;
+  }
+
+  /** Internal helper used by response metadata to poison the native connection. */
+  _forbidConnectionReuse(): boolean {
+    if (this.#bodyHandle === null || this.#bodyUsed) {
+      return false;
+    }
+
+    return nativeForbidBodyRecycle(this.#bodyHandle);
   }
 
   /** Returns the response body as a readable byte stream. */

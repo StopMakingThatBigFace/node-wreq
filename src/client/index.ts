@@ -10,8 +10,18 @@ import type {
 } from '../types';
 import { Headers } from '../headers';
 import { mergeHooks } from '../hooks';
-import { fetch } from '../http/fetch';
-import { websocket } from '../websocket';
+import { fetchWithNativeClient } from '../http/fetch';
+import { nativeReleaseClient } from '../native';
+import { websocketWithNativeClient } from '../websocket';
+
+let nextNativeClientId = 1;
+const clientFinalizer = new FinalizationRegistry<number>((clientId) => {
+  try {
+    nativeReleaseClient(clientId);
+  } catch {
+    // Native bindings may already be unavailable during process shutdown.
+  }
+});
 
 function mergeHeaders(...sources: Array<HeadersInit | undefined>): HeaderTuple[] | undefined {
   const merged = new Headers();
@@ -115,6 +125,9 @@ function mergeDefaults(base: ClientDefaults, override?: ClientDefaults): ClientD
 
 class WreqClient implements Client {
   readonly defaults: ClientDefaults;
+  readonly #nativeClientId = nextNativeClientId++;
+  readonly #finalizerToken = {};
+  #closed = false;
 
   constructor(defaults: ClientDefaults = {}) {
     this.defaults = {
@@ -124,9 +137,13 @@ class WreqClient implements Client {
       context: mergeContext(defaults.context),
       retry: mergeRetry(defaults.retry),
     };
+
+    clientFinalizer.register(this, this.#nativeClientId, this.#finalizerToken);
   }
 
   async fetch(input: RequestInput, init?: WreqInit) {
+    this.#assertOpen();
+
     const merged: WreqInit = {
       ...this.defaults,
       ...init,
@@ -137,10 +154,12 @@ class WreqClient implements Client {
       retry: mergeRetry(this.defaults.retry, init?.retry),
     };
 
-    return fetch(input, merged);
+    return fetchWithNativeClient(input, merged, this.#nativeClientId);
   }
 
   async websocket(input: string | URL, init?: WebSocketInit) {
+    this.#assertOpen();
+
     const merged: WebSocketInit = {
       ...this.defaults,
       ...init,
@@ -148,7 +167,7 @@ class WreqClient implements Client {
       query: mergeQuery(this.defaults.query, init?.query),
     };
 
-    return websocket(input, merged);
+    return websocketWithNativeClient(input, merged, this.#nativeClientId);
   }
 
   async get(input: RequestInput, init?: Omit<WreqInit, 'method'>) {
@@ -192,7 +211,25 @@ class WreqClient implements Client {
   }
 
   extend(defaults: ClientDefaults): Client {
+    this.#assertOpen();
+
     return new WreqClient(mergeDefaults(this.defaults, defaults));
+  }
+
+  close(): void {
+    if (this.#closed) {
+      return;
+    }
+
+    this.#closed = true;
+    clientFinalizer.unregister(this.#finalizerToken);
+    nativeReleaseClient(this.#nativeClientId);
+  }
+
+  #assertOpen(): void {
+    if (this.#closed) {
+      throw new Error('Client is closed');
+    }
   }
 }
 

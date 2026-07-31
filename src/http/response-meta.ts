@@ -59,4 +59,9 @@ export class ResponseMeta implements WreqResponseMeta {
 
     return body ? Readable.fromWeb(body) : Readable.from([]);
   }
+
+  /** Prevents the current native connection from being returned to the pool. */
+  forbidConnectionReuse(): boolean {
+    return this.response._forbidConnectionReuse();
+  }
 }

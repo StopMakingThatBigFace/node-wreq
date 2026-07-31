@@ -72,3 +72,11 @@ export async function nativeReadBodyChunk(
 export function nativeCancelBody(handle: number): boolean {
   return getBinding().cancelBody(handle);
 }
+
+export function nativeReleaseClient(clientId: number): boolean {
+  return getBinding().releaseClient(clientId);
+}
+
+export function nativeForbidBodyRecycle(handle: number): boolean {
+  return getBinding().forbidBodyRecycle(handle);
+}

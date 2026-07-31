@@ -105,7 +105,12 @@ console.log(await response.json());
 import { fetch } from 'node-wreq';
 
 const response = await fetch('https://httpbin.org/get', {
-  browser: 'firefox_139',
+  browser: {
+    profile: 'firefox_151',
+    platform: 'linux',
+    http2: true,
+    headers: true,
+  },
   query: {
     source: 'node-wreq',
     debug: true,
@@ -142,7 +147,9 @@ console.log(await response.json());
 
 ### upload `FormData`
 
-`FormData` request bodies work like `fetch`: the multipart boundary and `content-type` header are generated automatically.
+`FormData` request bodies work like `fetch`. By default, `node-wreq` generates a
+`----WebKitFormBoundary...` boundary so the multipart envelope matches browser traffic as well as
+the TLS and HTTP fingerprints do.
 
 ```ts
 const formData = new FormData();
@@ -153,6 +160,7 @@ formData.append('upload', new File(['hello'], 'hello.txt', { type: 'text/plain' 
 const response = await fetch('https://api.example.com/upload', {
   method: 'POST',
   body: formData,
+  // Optional: multipartBoundary: '----my-explicit-boundary',
 });
 
 console.log(await response.json());
@@ -206,7 +214,8 @@ readable.pipe(process.stdout);
 
 ## 🧩 <a id="client"></a>client   ·   [↑](#contents)
 
-Use `createClient(...)` when requests share defaults:
+Use `createClient(...)` when requests share defaults. A client also owns reusable native connection
+and TLS-session pools; it is not just a JavaScript defaults wrapper.
 
 - `baseURL`
 - browser profile
@@ -250,6 +259,9 @@ const created = await client.post(
 );
 
 console.log(created.status);
+
+// Optional for long-lived processes; pooled resources are also released after GC.
+client.close();
 ```
 
 ### extend a client
@@ -293,6 +305,34 @@ Typical profiles include browser families like:
 
 The current upstream snapshot includes the newest profiles through `chrome_149`, `edge_148`,
 `firefox_151`, `opera_131`, and `safari_26_4`. When `browser` is omitted, `chrome_149` is used.
+
+You can also select a platform explicitly or ask upstream to choose a profile automatically:
+
+```ts
+await fetch('https://example.com', {
+  browser: {
+    profile: 'chrome_149',
+    platform: 'windows',
+    // Optional component switches from upstream's Emulation builder:
+    http2: true,
+    headers: true,
+  },
+});
+
+await fetch('https://example.com', {
+  browser: { mode: 'random' },
+});
+
+await fetch('https://example.com', {
+  // Uses current browser-market-share weights and valid browser/platform pairings.
+  browser: { mode: 'weighted-random' },
+});
+```
+
+Set `browser.http2` to `false` when you want the selected TLS/profile identity without its
+HTTP/2 fingerprint settings. Set `browser.headers` to `false` to omit the profile's default
+headers and header ordering; the top-level `disableDefaultHeaders` option remains a convenient
+request-wide equivalent for the latter.
 
 ## 🪝 <a id="hooks"></a>hooks   ·   [↑](#contents)
 
@@ -704,6 +744,7 @@ Notes:
 
 - cookies from `cookieJar` are sent during handshake
 - duplicate subprotocols are rejected
+- `httpVersion: '1.1' | '2'` explicitly selects the handshake HTTP version
 
 ## 🧪 <a id="networking"></a>networking / transport knobs   ·   [↑](#contents)
 
@@ -799,6 +840,7 @@ await fetch('https://example.com', {
   browser: 'chrome_137',
   tlsOptions: {
     greaseEnabled: true,
+    keyShares: ['X25519_MLKEM768', 'X25519', 'P256'],
   },
   http1Options: {
     writev: true,
@@ -815,6 +857,43 @@ Use these only when:
 - a target is still picky after choosing a browser profile
 - you are comparing transport behavior
 - you want to debug fingerprint mismatches
+
+Custom TLS/HTTP1/HTTP2 options are overlaid on the selected browser profile. Unspecified profile
+settings remain intact.
+
+### native connection and TLS-session pools
+
+`createClient()` reuses the underlying native `wreq::Client`, including HTTP keep-alive connections
+and TLS sessions. Builder-affecting per-request overrides automatically get an isolated client
+variant so a proxy, DNS, TLS, or browser change cannot reuse an incompatible pool.
+
+```ts
+const client = createClient({
+  baseURL: 'https://api.example.com',
+  poolIdleTimeout: 90_000,
+  poolMaxIdlePerHost: 8,
+  poolMaxSize: 128,
+  tlsSessionCacheCapacity: 8,
+});
+
+await client.get('/account', {
+  // Requests in different groups never share pooled connections.
+  connectionGroup: 'account-session',
+});
+
+const response = await client.get('/health', {
+  // Static form: discard this request's connection after the response.
+  forbidConnectionReuse: true,
+});
+
+// Conditional form: call before consuming the body.
+response.wreq.forbidConnectionReuse();
+
+client.close();
+```
+
+Set `poolIdleTimeout: false` to disable idle expiry. `connectionGroup` accepts a string or a
+non-negative integer.
 
 ### mTLS and custom CAs
 

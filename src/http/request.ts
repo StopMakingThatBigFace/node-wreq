@@ -7,6 +7,7 @@ import {
   cloneBytes,
   createMultipartRequest,
   isFormDataBody,
+  MultipartBody,
   toBodyBytes,
 } from './body/bytes';
 
@@ -21,7 +22,7 @@ export class Request {
   /** Abort signal associated with the request, if any. */
   readonly signal: AbortSignal | null;
   #bodyBytes: Uint8Array | null;
-  #multipartBody: globalThis.Request | null;
+  #multipartBody: MultipartBody | null;
   #bodyUsed = false;
   #stream: ReadableStream<Uint8Array> | null = null;
 
@@ -39,10 +40,15 @@ export class Request {
       this.#multipartBody = null;
 
       if (init.body !== undefined) {
-        this.#setBody(init.body);
+        this.#setBody(init.body, init.multipartBoundary);
       } else {
         this.#bodyBytes = cloneBytes(input.#bodyBytes);
         this.#multipartBody = input.#multipartBody?.clone() ?? null;
+
+        if (init.multipartBoundary && this.#multipartBody) {
+          this.#multipartBody = this.#multipartBody.withBoundary(init.multipartBoundary);
+          this.headers.set('content-type', this.#multipartBody.contentType);
+        }
       }
 
       return;
@@ -54,7 +60,7 @@ export class Request {
     this.signal = init.signal ?? null;
     this.#bodyBytes = null;
     this.#multipartBody = null;
-    this.#setBody(init.body);
+    this.#setBody(init.body, init.multipartBoundary);
   }
 
   /** Returns the request body as a readable byte stream. */
@@ -193,7 +199,7 @@ export class Request {
     return next;
   }
 
-  #setBody(body: BodyInit | null | undefined): void {
+  #setBody(body: BodyInit | null | undefined, multipartBoundary?: string): void {
     const nextBody = cloneBodyInit(body);
 
     this.#stream = null;
@@ -206,15 +212,12 @@ export class Request {
     }
 
     if (isFormDataBody(nextBody)) {
-      const multipartBody = createMultipartRequest(nextBody);
-      const contentType = multipartBody.headers.get('content-type');
+      const multipartBody = createMultipartRequest(nextBody, multipartBoundary);
 
       this.#bodyBytes = null;
       this.#multipartBody = multipartBody;
 
-      if (contentType) {
-        this.headers.set('content-type', contentType);
-      }
+      this.headers.set('content-type', multipartBody.contentType);
 
       return;
     }

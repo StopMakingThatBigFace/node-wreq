@@ -18,7 +18,8 @@ import {
   normalizeTlsIdentity,
 } from '../../config/tls';
 import { Headers } from '../../headers';
-import { normalizeMethod, validateBrowserProfile } from '../../native/index';
+import { createNativeClientCacheKey } from '../../native/client-cache';
+import { normalizeBrowserEmulation, normalizeMethod } from '../../native/index';
 import { Request } from '../request';
 
 const DEFAULT_RETRY_METHODS = ['GET', 'HEAD'] as const;
@@ -112,19 +113,21 @@ export function resolveOptions(init: WreqInit): ResolvedOptions {
 }
 
 export function createRequest(urlInput: string | URL, options: ResolvedOptions): Request {
-  validateBrowserProfile(options.browser);
+  normalizeBrowserEmulation(options.browser);
 
   return new Request(resolveUrl(urlInput, options.baseURL, options.query), {
     method: normalizeMethod(options.method),
     headers: options.headers,
     body: options.body,
+    multipartBoundary: options.multipartBoundary,
     signal: options.signal ?? undefined,
   });
 }
 
 export async function buildNativeRequest(
   request: Request,
-  options: ResolvedOptions
+  options: ResolvedOptions,
+  clientId?: number
 ): Promise<NativeRequestOptions> {
   const { proxy, disableSystemProxy } = normalizeProxyOptions(options.proxy);
   const body = await request._getBodyBytesForDispatch();
@@ -132,18 +135,19 @@ export async function buildNativeRequest(
   const readTimeout = resolveNativeDuration('readTimeout', options.readTimeout);
   const connectTimeout = resolveNativeDuration('connectTimeout', options.connectTimeout);
   const localBind = normalizeLocalBindOptions(options);
+  const browser = normalizeBrowserEmulation(options.browser);
 
   if (options.http1Only && options.http2Only) {
     throw new TypeError('http1Only and http2Only cannot both be true');
   }
 
-  return {
+  const nativeOptions: NativeRequestOptions = {
     url: request.url,
     method: normalizeMethod(request.method),
     headers: request.headers.toTuples(),
     origHeaders: request.headers.toOriginalNames(),
     body: body ? Buffer.from(body) : undefined,
-    browser: options.browser,
+    ...browser,
     emulationJson: serializeEmulationOptions(options),
     proxy,
     disableSystemProxy,
@@ -151,6 +155,10 @@ export async function buildNativeRequest(
     ...timeout,
     ...readTimeout,
     ...connectTimeout,
+    poolIdleTimeout: options.poolIdleTimeout,
+    poolMaxIdlePerHost: options.poolMaxIdlePerHost,
+    poolMaxSize: options.poolMaxSize,
+    tlsSessionCacheCapacity: options.tlsSessionCacheCapacity,
     disableDefaultHeaders: options.disableDefaultHeaders,
     compress: options.compress,
     http1Only: options.http1Only,
@@ -160,5 +168,14 @@ export async function buildNativeRequest(
     ca: normalizeCertificateAuthority(options.ca),
     tlsDebug: normalizeTlsDebug(options.tlsDebug),
     tlsDanger: normalizeTlsDanger(options.tlsDanger),
+    connectionGroup: options.connectionGroup,
+    forbidConnectionReuse: options.forbidConnectionReuse,
   };
+
+  if (clientId !== undefined) {
+    nativeOptions.clientId = clientId;
+    nativeOptions.clientCacheKey = createNativeClientCacheKey(nativeOptions);
+  }
+
+  return nativeOptions;
 }

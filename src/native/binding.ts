@@ -14,6 +14,7 @@ export type NativeBinding = {
     promise: Promise<NativeResponse>;
   };
   cancelRequest: (handle: number) => boolean;
+  releaseClient: (clientId: number) => boolean;
   websocketConnect: (options: NativeWebSocketConnectOptions) => Promise<NativeWebSocketConnection>;
   websocketRead: (handle: number) => Promise<NativeWebSocketReadResult>;
   websocketSendText: (handle: number, text: string) => Promise<void>;
@@ -27,6 +28,7 @@ export type NativeBinding = {
     done: boolean;
   }>;
   cancelBody: (handle: number) => boolean;
+  forbidBodyRecycle: (handle: number) => boolean;
   getProfiles: () => string[];
 };
 
