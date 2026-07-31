@@ -92,7 +92,10 @@ export interface Http2Priority {
   dependency: Http2StreamDependency;
 }
 
-/** Extra HTTP/2 settings passed through to the transport by raw numeric id. */
+/**
+ * Extra HTTP/2 settings passed through to the transport by raw numeric id.
+ * @deprecated Upstream `wreq` no longer supports custom unknown HTTP/2 settings.
+ */
 export interface Http2ExperimentalSetting {
   /** Numeric HTTP/2 setting id. */
   id: number;
@@ -275,7 +278,10 @@ export interface Http2Options {
   headersStreamDependency?: Http2StreamDependency;
   /** Per-stream priority overrides. */
   priorities?: Http2Priority[];
-  /** Additional raw numeric settings passed to the connection. */
+  /**
+   * Additional raw numeric settings passed to the connection.
+   * @deprecated Upstream `wreq` no longer supports custom unknown HTTP/2 settings.
+   */
   experimentalSettings?: Http2ExperimentalSetting[];
 }
 

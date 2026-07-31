@@ -292,7 +292,7 @@ pub(crate) fn js_object_to_request_options(
         .get_opt(cx, "browser")?
         .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
         .map(|v| v.value(cx))
-        .unwrap_or_else(|| "chrome_137".to_string());
+        .unwrap_or_else(|| "chrome_149".to_string());
 
     let emulation_json = obj
         .get_opt(cx, "emulationJson")?
@@ -421,7 +421,7 @@ pub(crate) fn js_object_to_websocket_options(
         .get_opt(cx, "browser")?
         .and_then(|v: Handle<JsValue>| v.downcast::<JsString, _>(cx).ok())
         .map(|v| v.value(cx))
-        .unwrap_or_else(|| "chrome_137".to_string());
+        .unwrap_or_else(|| "chrome_149".to_string());
 
     let emulation_json = obj
         .get_opt(cx, "emulationJson")?

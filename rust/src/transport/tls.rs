@@ -4,7 +4,7 @@ use crate::transport::types::{
 };
 use anyhow::{Context, Result};
 use wreq::{
-    tls::{CertStore, Identity, KeyLog},
+    tls::{keylog::KeyLog, trust::CertStore, trust::Identity},
     ClientBuilder,
 };
 
@@ -16,11 +16,11 @@ pub fn configure_client_builder(
     tls_danger: Option<TlsDangerOptions>,
 ) -> Result<ClientBuilder> {
     if let Some(tls_identity) = tls_identity {
-        builder = builder.identity(build_identity(tls_identity)?);
+        builder = builder.tls_identity(build_identity(tls_identity)?);
     }
 
     if let Some(certificate_authority) = certificate_authority {
-        builder = builder.cert_store(build_cert_store(certificate_authority)?);
+        builder = builder.tls_cert_store(build_cert_store(certificate_authority)?);
     }
 
     if let Some(tls_debug) = tls_debug {
@@ -29,7 +29,7 @@ pub fn configure_client_builder(
         }
 
         if let Some(keylog) = tls_debug.keylog {
-            builder = builder.keylog(match keylog {
+            builder = builder.tls_keylog(match keylog {
                 TlsKeylogOptions::FromEnv => KeyLog::from_env(),
                 TlsKeylogOptions::File { path } => KeyLog::from_file(path),
             });
@@ -38,11 +38,11 @@ pub fn configure_client_builder(
 
     if let Some(tls_danger) = tls_danger {
         if let Some(cert_verification) = tls_danger.cert_verification {
-            builder = builder.cert_verification(cert_verification);
+            builder = builder.tls_cert_verification(cert_verification);
         }
 
         if let Some(verify_hostname) = tls_danger.verify_hostname {
-            builder = builder.verify_hostname(verify_hostname);
+            builder = builder.tls_verify_hostname(verify_hostname);
         }
 
         if let Some(sni) = tls_danger.sni {

@@ -3,20 +3,21 @@ use crate::emulation::parse::{
     parse_http2_setting_id, parse_pseudo_id, parse_tls_version,
 };
 use crate::emulation::payload::{
-    CustomHttp1Options, CustomHttp2ExperimentalSetting, CustomHttp2Options, CustomHttp2Priority,
-    CustomTlsOptions,
+    CustomHttp1Options, CustomHttp2Options, CustomHttp2Priority, CustomTlsOptions,
 };
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use std::collections::HashSet;
 use std::time::Duration;
 use wreq::{
     http1::Http1Options,
     http2::{
-        ExperimentalSettings, Http2Options, Priorities, Priority, PseudoOrder, Setting, SettingId,
-        SettingsOrder, StreamDependency, StreamId,
+        Http2Options, Priorities, Priority, PseudoOrder, SettingsOrder, StreamDependency, StreamId,
     },
-    tls::{ExtensionType, TlsOptions},
+    tls::{ExtensionType, KeyShare, TlsOptions},
 };
+
+const DEFAULT_KEY_SHARES: &[KeyShare] =
+    &[KeyShare::X25519_MLKEM768, KeyShare::X25519, KeyShare::P256];
 
 pub fn build_tls_options(options: CustomTlsOptions) -> Result<TlsOptions> {
     let mut builder = TlsOptions::builder();
@@ -76,7 +77,13 @@ pub fn build_tls_options(options: CustomTlsOptions) -> Result<TlsOptions> {
         builder = builder.psk_skip_session_ticket(value);
     }
     if let Some(value) = options.key_shares_limit {
-        builder = builder.key_shares_limit(Some(value));
+        if value == 0 {
+            bail!("Invalid emulation tlsOptions.keySharesLimit: must be greater than 0");
+        }
+
+        builder = builder.key_shares(
+            DEFAULT_KEY_SHARES[..usize::from(value).min(DEFAULT_KEY_SHARES.len())].to_vec(),
+        );
     }
     if let Some(value) = options.psk_dhe_ke {
         builder = builder.psk_dhe_ke(value);
@@ -97,7 +104,7 @@ pub fn build_tls_options(options: CustomTlsOptions) -> Result<TlsOptions> {
         builder = builder.sigalgs_list(value);
     }
     if let Some(value) = options.certificate_compression_algorithms {
-        builder = builder.certificate_compression_algorithms(
+        builder = builder.certificate_compressors(
             value
                 .into_iter()
                 .map(|algorithm| parse_certificate_compression_algorithm(&algorithm))
@@ -236,8 +243,11 @@ pub fn build_http2_options(options: CustomHttp2Options) -> Result<Http2Options> 
         builder = builder.priorities(Some(build_priorities(priorities)?));
     }
     if let Some(experimental_settings) = options.experimental_settings {
-        builder = builder
-            .experimental_settings(Some(build_experimental_settings(experimental_settings)?));
+        if !experimental_settings.is_empty() {
+            bail!(
+                "Unsupported emulation http2Options.experimentalSettings: wreq 6.0.0-rc.29 no longer exposes custom HTTP/2 settings"
+            );
+        }
     }
 
     Ok(builder.build())
@@ -300,46 +310,6 @@ fn build_priorities(priorities: Vec<CustomHttp2Priority>) -> Result<Priorities> 
             StreamId::from(priority.stream_id),
             dependency,
         ));
-    }
-
-    Ok(builder.build())
-}
-
-fn build_experimental_settings(
-    experimental_settings: Vec<CustomHttp2ExperimentalSetting>,
-) -> Result<ExperimentalSettings> {
-    let mut builder = ExperimentalSettings::builder();
-    let mut seen_ids = HashSet::with_capacity(experimental_settings.len());
-    let max_id = 15u16;
-
-    for setting in experimental_settings {
-        if setting.id == 0 || setting.id > max_id {
-            bail!(
-                "Invalid emulation http2Options.experimentalSettings entry: id must be between 1 and {}",
-                max_id
-            );
-        }
-        if !matches!(SettingId::from(setting.id), SettingId::Unknown(_)) {
-            bail!(
-                "Invalid emulation http2Options.experimentalSettings entry: {} is a standard HTTP/2 setting id",
-                setting.id
-            );
-        }
-        if !seen_ids.insert(setting.id) {
-            bail!(
-                "Duplicate emulation http2Options.experimentalSettings id: {}",
-                setting.id
-            );
-        }
-
-        let setting =
-            Setting::from_id(SettingId::Unknown(setting.id), setting.value).ok_or_else(|| {
-                anyhow!(
-                    "Invalid emulation http2Options.experimentalSettings id: {}",
-                    setting.id
-                )
-            })?;
-        builder = builder.push(setting);
     }
 
     Ok(builder.build())

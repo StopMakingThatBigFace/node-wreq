@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use std::time::Duration;
 use wreq::ws::message::{CloseCode, CloseFrame, Message};
 use wreq::ws::WebSocket;
+use wreq::Version;
 
 pub fn connect_websocket(options: WebSocketConnectOptions) -> Result<WebSocketConnection> {
     runtime().block_on(make_websocket(options))
@@ -243,7 +244,7 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
     request = request.default_headers(!disable_default_headers);
 
     if force_http2 {
-        request = request.force_http2();
+        request = request.version(Version::HTTP_2);
     }
 
     if let Some(read_buffer_size) = read_buffer_size {

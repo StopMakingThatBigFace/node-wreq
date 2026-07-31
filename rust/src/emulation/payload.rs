@@ -137,7 +137,7 @@ pub struct CustomHttp2Options {
     #[serde(default)]
     pub priorities: Option<Vec<CustomHttp2Priority>>,
     #[serde(default)]
-    pub experimental_settings: Option<Vec<CustomHttp2ExperimentalSetting>>,
+    pub experimental_settings: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -154,10 +154,4 @@ pub struct CustomHttp2StreamDependency {
     pub weight: u8,
     #[serde(default)]
     pub exclusive: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CustomHttp2ExperimentalSetting {
-    pub id: u16,
-    pub value: u32,
 }

@@ -1,8 +1,9 @@
 use anyhow::{bail, Result};
 use wreq::{
     http2::{PseudoId, SettingId},
-    tls::{AlpnProtocol, AlpsProtocol, CertificateCompressionAlgorithm, TlsVersion},
+    tls::{compress::CertificateCompressor, AlpnProtocol, AlpsProtocol, TlsVersion},
 };
+use wreq_util::emulate::compress::{BrotliCompressor, ZlibCompressor, ZstdCompressor};
 
 pub fn parse_tls_version(value: &str) -> Result<TlsVersion> {
     match value {
@@ -34,11 +35,11 @@ pub fn parse_alps_protocol(value: &str) -> Result<AlpsProtocol> {
 
 pub fn parse_certificate_compression_algorithm(
     value: &str,
-) -> Result<CertificateCompressionAlgorithm> {
+) -> Result<&'static dyn CertificateCompressor> {
     match value {
-        "zlib" => Ok(CertificateCompressionAlgorithm::ZLIB),
-        "brotli" => Ok(CertificateCompressionAlgorithm::BROTLI),
-        "zstd" => Ok(CertificateCompressionAlgorithm::ZSTD),
+        "zlib" => Ok(&ZlibCompressor),
+        "brotli" => Ok(&BrotliCompressor),
+        "zstd" => Ok(&ZstdCompressor),
         other => bail!("Invalid certificate compression algorithm: {other}"),
     }
 }

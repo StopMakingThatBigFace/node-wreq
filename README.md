@@ -291,6 +291,9 @@ Typical profiles include browser families like:
 - Opera
 - OkHttp
 
+The current upstream snapshot includes the newest profiles through `chrome_149`, `edge_148`,
+`firefox_151`, `opera_131`, and `safari_26_4`. When `browser` is omitted, `chrome_149` is used.
+
 ## 🪝 <a id="hooks"></a>hooks   ·   [↑](#contents)
 
 Hooks are the request pipeline.

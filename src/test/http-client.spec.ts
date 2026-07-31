@@ -11,12 +11,15 @@ describe('http client', () => {
 
     assert.ok(Array.isArray(profiles), 'Profiles should be an array');
     assert.ok(profiles.length > 0, 'Should have at least one profile');
-    assert.ok(
-      profiles.includes('chrome_137') ||
-        profiles.includes('firefox_139') ||
-        profiles.includes('safari_18'),
-      'Should include standard browser profiles'
-    );
+    for (const profile of [
+      'chrome_149',
+      'edge_148',
+      'firefox_151',
+      'opera_131',
+      'safari_26_4',
+    ] as const) {
+      assert.ok(profiles.includes(profile), `Should include upstream profile ${profile}`);
+    }
   });
 
   test('should make a simple GET request', async () => {
@@ -35,11 +38,11 @@ describe('http client', () => {
 
   test('should work with different browser profiles', async () => {
     const testUrl = `${getBaseUrl()}/user-agent`;
-    const browsers = ['chrome_137', 'firefox_139', 'safari_18'];
+    const browsers = ['chrome_149', 'firefox_151', 'safari_26_4'] as const;
 
     for (const browser of browsers) {
       const response = await fetch(testUrl, {
-        browser: browser as any,
+        browser,
         timeout: 30000,
       });
 
@@ -374,6 +377,8 @@ describe('http client', () => {
       browser: 'chrome_137',
       tlsOptions: {
         greaseEnabled: true,
+        keySharesLimit: 2,
+        certificateCompressionAlgorithms: ['brotli', 'zlib', 'zstd'],
       },
       http1Options: {
         writev: true,
@@ -385,6 +390,17 @@ describe('http client', () => {
     });
 
     assert.strictEqual(response.status, 200);
+  });
+
+  test('should reject HTTP/2 experimental settings removed by upstream', async () => {
+    await assert.rejects(
+      fetch(`${getBaseUrl()}/headers/raw`, {
+        http2Options: {
+          experimentalSettings: [{ id: 10, value: 1 }],
+        },
+      }),
+      /wreq 6\.0\.0-rc\.29 no longer exposes custom HTTP\/2 settings/
+    );
   });
 
   test('should support native-like Request instances', async () => {
