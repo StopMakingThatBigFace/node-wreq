@@ -1,4 +1,4 @@
-use crate::store::body_store::{cancel_body, read_body_chunk};
+use crate::store::body_store::{cancel_body, forbid_body_recycle, read_body_chunk};
 use neon::prelude::*;
 use neon::types::JsBuffer;
 
@@ -37,8 +37,18 @@ fn cancel_body_js(mut cx: FunctionContext) -> JsResult<JsBoolean> {
     Ok(cx.boolean(cancel_body(handle)))
 }
 
+fn forbid_body_recycle_js(mut cx: FunctionContext) -> JsResult<JsBoolean> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+
+    match forbid_body_recycle(handle) {
+        Ok(value) => Ok(cx.boolean(value)),
+        Err(error) => cx.throw_error(format!("{:#}", error)),
+    }
+}
+
 pub fn register(cx: &mut ModuleContext) -> NeonResult<()> {
     cx.export_function("readBodyChunk", read_body_chunk_js)?;
     cx.export_function("cancelBody", cancel_body_js)?;
+    cx.export_function("forbidBodyRecycle", forbid_body_recycle_js)?;
     Ok(())
 }

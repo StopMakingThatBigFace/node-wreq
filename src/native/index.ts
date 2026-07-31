@@ -1,6 +1,17 @@
 export { normalizeMethod } from './methods';
-export { getProfiles, validateBrowserProfile } from './profiles';
-export { nativeCancelBody, nativeReadBodyChunk, nativeRequest } from './request';
+export { getProfiles, normalizeBrowserEmulation, validateBrowserProfile } from './profiles';
+export {
+  nativeCancelBody,
+  nativeForbidBodyRecycle,
+  nativeCreateUpload,
+  nativeFailUpload,
+  nativeFinishUpload,
+  nativeReadBodyChunk,
+  nativeReleaseClient,
+  nativeRequest,
+  nativeWriteUploadChunk,
+} from './request';
+
 export {
   nativeWebSocketClose,
   nativeWebSocketConnect,

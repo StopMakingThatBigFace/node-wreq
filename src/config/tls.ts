@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer';
 import type {
   CertificateAuthority,
   NativeCertificateAuthority,
@@ -11,6 +10,7 @@ import type {
   TlsDebugOptions,
   TlsIdentity,
 } from '../types';
+import { Buffer } from 'node:buffer';
 
 function toBuffer(input: TlsDataInput | TlsBinaryInput): Buffer {
   if (Buffer.isBuffer(input)) {

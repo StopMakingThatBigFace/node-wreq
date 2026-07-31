@@ -1,124 +1,99 @@
 use crate::store::body_store::store_body;
+use crate::transport::client::request_client;
 use crate::transport::cookies::parse_cookie_pair;
-use crate::transport::dns::configure_client_builder as configure_dns;
 use crate::transport::headers::build_orig_header_map;
-use crate::transport::tls::configure_client_builder;
-use crate::transport::types::{RequestOptions, Response, ResponseTlsInfo};
+use crate::transport::types::{
+    ConnectionGroup, MultipartBodyOptions, MultipartPartOptions, RequestBody, RequestOptions,
+    Response, ResponseTlsInfo,
+};
 use anyhow::{Context, Result};
 use std::time::Duration;
-use wreq::{redirect, tls::TlsInfo, Method};
+use tokio_stream::wrappers::ReceiverStream;
+use wreq::{
+    multipart::{Form, Part},
+    redirect,
+    tls::TlsInfo,
+    Body, Group, Method,
+};
+
+fn build_multipart(options: MultipartBodyOptions) -> Result<Form> {
+    let mut form = Form::with_boundary(options.boundary).percent_encode_noop();
+
+    for part in options.parts {
+        match part {
+            MultipartPartOptions::Text { name, value } => {
+                form = form.text(name, value);
+            }
+            MultipartPartOptions::Stream {
+                name,
+                file_name,
+                mime_type,
+                length,
+                receiver,
+            } => {
+                let stream = ReceiverStream::new(receiver);
+                let body = Body::wrap_stream(stream);
+                let part = Part::stream_with_length(body, length)
+                    .file_name(file_name)
+                    .mime_str(&mime_type)
+                    .with_context(|| format!("Invalid multipart MIME type: {mime_type}"))?;
+
+                form = form.part(name, part);
+            }
+        }
+    }
+
+    Ok(form)
+}
 
 pub async fn make_request(options: RequestOptions) -> Result<Response> {
+    let client = request_client(&options).await?;
     let RequestOptions {
+        client_id: _,
+        client_cache_key: _,
         url,
-        emulation,
+        emulation: _,
         headers,
         orig_headers,
         method,
         body,
-        proxy,
-        disable_system_proxy,
-        dns,
+        proxy: _,
+        disable_system_proxy: _,
+        dns: _,
         timeout,
         read_timeout,
-        connect_timeout,
+        connect_timeout: _,
+        pool_idle_timeout: _,
+        pool_max_idle_per_host: _,
+        pool_max_size: _,
+        tls_session_cache_capacity: _,
         disable_default_headers,
         compress,
-        http1_only,
-        http2_only,
-        local_bind,
-        tls_identity,
-        certificate_authority,
-        tls_debug,
-        tls_danger,
+        http1_only: _,
+        http2_only: _,
+        local_bind: _,
+        tls_identity: _,
+        certificate_authority: _,
+        tls_debug: _,
+        tls_danger: _,
+        connection_group,
+        forbid_connection_reuse,
     } = options;
 
-    let mut client_builder = wreq::Client::builder()
-        .emulation(emulation)
-        .cookie_store(true);
-
-    if disable_system_proxy {
-        client_builder = client_builder.no_proxy();
-    } else if let Some(proxy_url) = &proxy {
-        let proxy = wreq::Proxy::all(proxy_url).context("Failed to create proxy")?;
-        client_builder = client_builder.proxy(proxy);
-    }
-
-    client_builder = configure_dns(client_builder, dns).await?;
-    client_builder = configure_client_builder(
-        client_builder,
-        tls_identity,
-        certificate_authority,
-        tls_debug,
-        tls_danger,
-    )?;
-
-    if let Some(connect_timeout) = connect_timeout {
-        client_builder = client_builder.connect_timeout(Duration::from_millis(connect_timeout));
-    }
-
-    if http1_only {
-        client_builder = client_builder.http1_only();
-    }
-
-    if http2_only {
-        client_builder = client_builder.http2_only();
-    }
-
-    if let Some(local_bind) = local_bind {
-        if let Some(address) = local_bind.address {
-            client_builder = client_builder.local_address(address);
-        }
-
-        if local_bind.ipv4.is_some() || local_bind.ipv6.is_some() {
-            client_builder = client_builder.local_addresses(local_bind.ipv4, local_bind.ipv6);
-        }
-
-        if let Some(interface) = local_bind.interface {
-            #[cfg(any(
-                target_os = "android",
-                target_os = "fuchsia",
-                target_os = "illumos",
-                target_os = "ios",
-                target_os = "linux",
-                target_os = "macos",
-                target_os = "solaris",
-                target_os = "tvos",
-                target_os = "visionos",
-                target_os = "watchos",
-            ))]
-            {
-                client_builder = client_builder.interface(interface);
-            }
-
-            #[cfg(not(any(
-                target_os = "android",
-                target_os = "fuchsia",
-                target_os = "illumos",
-                target_os = "ios",
-                target_os = "linux",
-                target_os = "macos",
-                target_os = "solaris",
-                target_os = "tvos",
-                target_os = "visionos",
-                target_os = "watchos",
-            )))]
-            {
-                let _ = interface;
-            }
-        }
-    }
-
     let orig_headers = build_orig_header_map(&orig_headers);
-    let client = client_builder
-        .build()
-        .context("Failed to build HTTP client")?;
 
     let method = if method.is_empty() { "GET" } else { &method };
     let parsed_method = Method::from_bytes(method.as_bytes())
         .with_context(|| format!("Unsupported HTTP method: {}", method))?;
 
     let mut request = client.request(parsed_method, &url);
+
+    if let Some(group) = connection_group {
+        request = request.group(match group {
+            ConnectionGroup::Name(name) => Group::new(name),
+            ConnectionGroup::Number(number) => Group::new(number),
+        });
+    }
 
     for (key, value) in &headers {
         request = request.header(key, value);
@@ -129,7 +104,10 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
     }
 
     if let Some(body) = body {
-        request = request.body(body);
+        request = match body {
+            RequestBody::Bytes(bytes) => request.body(bytes),
+            RequestBody::Multipart(options) => request.multipart(build_multipart(options)?),
+        };
     }
 
     if let Some(timeout) = timeout {
@@ -149,6 +127,10 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
         .send()
         .await
         .with_context(|| format!("{} {}", method, url))?;
+
+    if forbid_connection_reuse {
+        response.forbid_recycle();
+    }
 
     let tls_info = response
         .extensions()

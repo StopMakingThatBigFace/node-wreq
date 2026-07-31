@@ -74,6 +74,7 @@ export async function parseResponseFormData(
       enumerable: false,
       writable: true,
     });
+
     throw wrapped;
   }
 }

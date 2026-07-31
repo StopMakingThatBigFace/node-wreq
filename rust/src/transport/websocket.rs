@@ -1,13 +1,12 @@
 use crate::store::runtime::runtime;
 use crate::store::websocket_store::{insert_websocket, WebSocketCommand};
-use crate::transport::dns::configure_client_builder as configure_dns;
+use crate::transport::client::websocket_client;
 use crate::transport::headers::build_orig_header_map;
-use crate::transport::tls::configure_client_builder;
 use crate::transport::types::{WebSocketConnectOptions, WebSocketConnection, WebSocketReadResult};
 use anyhow::{Context, Result};
-use std::time::Duration;
 use wreq::ws::message::{CloseCode, CloseFrame, Message};
 use wreq::ws::WebSocket;
+use wreq::Version;
 
 pub fn connect_websocket(options: WebSocketConnectOptions) -> Result<WebSocketConnection> {
     runtime().block_on(make_websocket(options))
@@ -133,102 +132,38 @@ async fn run_websocket_task(
 }
 
 async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketConnection> {
+    let client = websocket_client(&options).await?;
     let WebSocketConnectOptions {
+        client_id: _,
+        client_cache_key: _,
         url,
-        emulation,
+        emulation: _,
         headers,
         orig_headers,
-        proxy,
-        disable_system_proxy,
-        dns,
-        timeout,
+        proxy: _,
+        disable_system_proxy: _,
+        dns: _,
+        timeout: _,
+        pool_idle_timeout: _,
+        pool_max_idle_per_host: _,
+        pool_max_size: _,
+        tls_session_cache_capacity: _,
         disable_default_headers,
         protocols,
         force_http2,
+        http_version,
         read_buffer_size,
         write_buffer_size,
         max_write_buffer_size,
         accept_unmasked_frames,
         max_frame_size,
         max_message_size,
-        local_bind,
-        tls_identity,
-        certificate_authority,
-        tls_debug,
-        tls_danger,
+        local_bind: _,
+        tls_identity: _,
+        certificate_authority: _,
+        tls_debug: _,
+        tls_danger: _,
     } = options;
-
-    let mut client_builder = wreq::Client::builder()
-        .emulation(emulation)
-        .cookie_store(true);
-
-    if let Some(timeout) = timeout {
-        client_builder = client_builder.timeout(Duration::from_millis(timeout));
-    }
-
-    if disable_system_proxy {
-        client_builder = client_builder.no_proxy();
-    } else if let Some(proxy_url) = &proxy {
-        let proxy = wreq::Proxy::all(proxy_url).context("Failed to create proxy")?;
-        client_builder = client_builder.proxy(proxy);
-    }
-
-    client_builder = configure_dns(client_builder, dns).await?;
-    client_builder = configure_client_builder(
-        client_builder,
-        tls_identity,
-        certificate_authority,
-        tls_debug,
-        tls_danger,
-    )?;
-
-    if let Some(local_bind) = local_bind {
-        if let Some(address) = local_bind.address {
-            client_builder = client_builder.local_address(address);
-        }
-
-        if local_bind.ipv4.is_some() || local_bind.ipv6.is_some() {
-            client_builder = client_builder.local_addresses(local_bind.ipv4, local_bind.ipv6);
-        }
-
-        if let Some(interface) = local_bind.interface {
-            #[cfg(any(
-                target_os = "android",
-                target_os = "fuchsia",
-                target_os = "illumos",
-                target_os = "ios",
-                target_os = "linux",
-                target_os = "macos",
-                target_os = "solaris",
-                target_os = "tvos",
-                target_os = "visionos",
-                target_os = "watchos",
-            ))]
-            {
-                client_builder = client_builder.interface(interface);
-            }
-
-            #[cfg(not(any(
-                target_os = "android",
-                target_os = "fuchsia",
-                target_os = "illumos",
-                target_os = "ios",
-                target_os = "linux",
-                target_os = "macos",
-                target_os = "solaris",
-                target_os = "tvos",
-                target_os = "visionos",
-                target_os = "watchos",
-            )))]
-            {
-                let _ = interface;
-            }
-        }
-    }
-
-    let client = client_builder
-        .build()
-        .context("Failed to build WebSocket client")?;
 
     let mut request = client.websocket(&url);
     let orig_headers = build_orig_header_map(&orig_headers);
@@ -242,8 +177,10 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
 
     request = request.default_headers(!disable_default_headers);
 
-    if force_http2 {
-        request = request.force_http2();
+    if let Some(version) = http_version {
+        request = request.version(version);
+    } else if force_http2 {
+        request = request.version(Version::HTTP_2);
     }
 
     if let Some(read_buffer_size) = read_buffer_size {

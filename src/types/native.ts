@@ -75,6 +75,36 @@ export interface NativeTlsPeerInfo {
   peerCertificateChain?: Buffer[];
 }
 
+/** Text field in a native multipart request. */
+export interface NativeMultipartTextPart {
+  kind: 'text';
+  name: string;
+  value: string;
+}
+
+/** Streamed file field in a native multipart request. */
+export interface NativeMultipartStreamPart {
+  kind: 'stream';
+  name: string;
+  fileName: string;
+  mimeType: string;
+  length: number;
+  uploadHandle: number;
+}
+
+/** Multipart body assembled and streamed by the native transport. */
+export interface NativeMultipartBody {
+  boundary: string;
+  parts: Array<NativeMultipartTextPart | NativeMultipartStreamPart>;
+}
+
+/** JS-side upload pump paired with a native multipart body. */
+export interface NativeMultipartUpload {
+  body: NativeMultipartBody;
+  start(signal?: AbortSignal | null): Promise<void>;
+  cancel(reason?: unknown): void;
+}
+
 /** Fully normalized native request payload. */
 export interface NativeRequestOptions {
   /** Fully resolved request URL. */
@@ -87,8 +117,20 @@ export interface NativeRequestOptions {
   origHeaders?: string[];
   /** Encoded request body bytes. */
   body?: Buffer;
+  /** Multipart body assembled by the native transport. */
+  multipart?: NativeMultipartBody;
+  /** Internal JS upload pump; never read by the native options converter. */
+  multipartUpload?: NativeMultipartUpload;
   /** Browser fingerprint profile used by the native transport. */
   browser?: BrowserProfile;
+  /** Browser profile selection strategy used by the native transport. */
+  browserMode?: 'fixed' | 'random' | 'weighted-random';
+  /** Operating-system identity paired with a fixed browser profile. */
+  browserPlatform?: 'windows' | 'macos' | 'linux' | 'android' | 'ios';
+  /** Whether the profile's HTTP/2 fingerprint settings are applied. */
+  browserHttp2?: boolean;
+  /** Whether the profile's default headers and ordering are applied. */
+  browserHeaders?: boolean;
   /** Serialized emulation options passed to the native layer. */
   emulationJson?: string;
   /** Proxy URL used for the request. */
@@ -103,6 +145,18 @@ export interface NativeRequestOptions {
   readTimeout?: number;
   /** Connection establishment timeout in milliseconds. */
   connectTimeout?: number;
+  /** Maximum idle time for pooled connections, or `false` to disable idle expiry. */
+  poolIdleTimeout?: number | false;
+  /** Maximum idle pooled connections retained per origin. */
+  poolMaxIdlePerHost?: number;
+  /** Maximum total connections retained by the native client pool. */
+  poolMaxSize?: number;
+  /** Per-origin capacity of the native TLS session cache. */
+  tlsSessionCacheCapacity?: number;
+  /** Internal owner id for reusable native clients. */
+  clientId?: number;
+  /** Internal transport-configuration key for reusable native clients. */
+  clientCacheKey?: string;
   /** Disables headers normally injected by the library. */
   disableDefaultHeaders?: boolean;
   /** Enables transparent compression handling where supported. */
@@ -125,6 +179,10 @@ export interface NativeRequestOptions {
   tlsDebug?: NativeTlsDebug;
   /** Unsafe TLS toggles intended only for controlled environments. */
   tlsDanger?: NativeTlsDanger;
+  /** Logical connection-pool partition for this request. */
+  connectionGroup?: string | number;
+  /** Discards the connection after this response. */
+  forbidConnectionReuse?: boolean;
 }
 
 /** Raw response payload returned by the native layer. */

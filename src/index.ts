@@ -1,11 +1,3 @@
-import { createClient } from './client';
-import { BROWSER_PROFILES } from './config/generated/browser-profiles';
-import { AbortError, HTTPError, RequestError, TimeoutError, WebSocketError } from './errors';
-import { Headers } from './headers';
-import { fetch } from './http/fetch';
-import { Request } from './http/request';
-import { Response } from './http/response';
-import { getProfiles } from './native/index';
 import type {
   AfterResponseContext,
   AlpnProtocol,
@@ -15,6 +7,10 @@ import type {
   BeforeRetryContext,
   BeforeRequestContext,
   BodyInit,
+  BrowserEmulation,
+  BrowserEmulationMode,
+  BrowserEmulationOptions,
+  BrowserPlatform,
   BrowserProfile,
   CertificateAuthority,
   Client,
@@ -51,12 +47,21 @@ import type {
   RetryDecisionContext,
   RetryOptions,
   TlsIdentity,
+  TlsKeyShare,
   TlsOptions,
   TlsVersion,
   WebSocketBinaryType,
   WebSocketInit,
   WreqInit,
 } from './types';
+import { createClient } from './client';
+import { BROWSER_PROFILES } from './config/generated/browser-profiles';
+import { AbortError, HTTPError, RequestError, TimeoutError, WebSocketError } from './errors';
+import { Headers } from './headers';
+import { fetch } from './http/fetch';
+import { Request } from './http/request';
+import { Response } from './http/response';
+import { getProfiles } from './native/index';
 import { CloseEvent, WebSocket, websocket } from './websocket';
 
 export {
@@ -87,6 +92,10 @@ export type {
   BeforeRetryContext,
   BeforeRequestContext,
   BodyInit,
+  BrowserEmulation,
+  BrowserEmulationMode,
+  BrowserEmulationOptions,
+  BrowserPlatform,
   BrowserProfile,
   CertificateAuthority,
   Client,
@@ -123,6 +132,7 @@ export type {
   RetryDecisionContext,
   RetryOptions,
   TlsIdentity,
+  TlsKeyShare,
   TlsOptions,
   TlsVersion,
   WebSocketBinaryType,

@@ -1,3 +1,9 @@
+import type {
+  NativeRequestOptions,
+  ResolvedOptions,
+  ResolvedRetryOptions,
+  WreqInit,
+} from '../../types';
 import { Buffer } from 'node:buffer';
 import { serializeEmulationOptions } from '../../config/emulation';
 import {
@@ -12,13 +18,8 @@ import {
   normalizeTlsIdentity,
 } from '../../config/tls';
 import { Headers } from '../../headers';
-import { normalizeMethod, validateBrowserProfile } from '../../native/index';
-import type {
-  NativeRequestOptions,
-  ResolvedOptions,
-  ResolvedRetryOptions,
-  WreqInit,
-} from '../../types';
+import { createNativeClientCacheKey } from '../../native/client-cache';
+import { normalizeBrowserEmulation, normalizeMethod } from '../../native/index';
 import { Request } from '../request';
 
 const DEFAULT_RETRY_METHODS = ['GET', 'HEAD'] as const;
@@ -112,53 +113,83 @@ export function resolveOptions(init: WreqInit): ResolvedOptions {
 }
 
 export function createRequest(urlInput: string | URL, options: ResolvedOptions): Request {
-  validateBrowserProfile(options.browser);
+  normalizeBrowserEmulation(options.browser);
 
   return new Request(resolveUrl(urlInput, options.baseURL, options.query), {
     method: normalizeMethod(options.method),
     headers: options.headers,
     body: options.body,
+    multipartBoundary: options.multipartBoundary,
     signal: options.signal ?? undefined,
   });
 }
 
 export async function buildNativeRequest(
   request: Request,
-  options: ResolvedOptions
+  options: ResolvedOptions,
+  clientId?: number
 ): Promise<NativeRequestOptions> {
   const { proxy, disableSystemProxy } = normalizeProxyOptions(options.proxy);
-  const body = await request._getBodyBytesForDispatch();
   const timeout = resolveNativeTimeout(options.timeout);
   const readTimeout = resolveNativeDuration('readTimeout', options.readTimeout);
   const connectTimeout = resolveNativeDuration('connectTimeout', options.connectTimeout);
   const localBind = normalizeLocalBindOptions(options);
+  const browser = normalizeBrowserEmulation(options.browser);
+  const dns = normalizeDnsOptions(options.dns);
+  const tlsIdentity = normalizeTlsIdentity(options.tlsIdentity);
+  const ca = normalizeCertificateAuthority(options.ca);
+  const tlsDebug = normalizeTlsDebug(options.tlsDebug);
+  const tlsDanger = normalizeTlsDanger(options.tlsDanger);
 
   if (options.http1Only && options.http2Only) {
     throw new TypeError('http1Only and http2Only cannot both be true');
   }
 
-  return {
-    url: request.url,
-    method: normalizeMethod(request.method),
-    headers: request.headers.toTuples(),
-    origHeaders: request.headers.toOriginalNames(),
-    body: body ? Buffer.from(body) : undefined,
-    browser: options.browser,
-    emulationJson: serializeEmulationOptions(options),
-    proxy,
-    disableSystemProxy,
-    dns: normalizeDnsOptions(options.dns),
-    ...timeout,
-    ...readTimeout,
-    ...connectTimeout,
-    disableDefaultHeaders: options.disableDefaultHeaders,
-    compress: options.compress,
-    http1Only: options.http1Only,
-    http2Only: options.http2Only,
-    ...localBind,
-    tlsIdentity: normalizeTlsIdentity(options.tlsIdentity),
-    ca: normalizeCertificateAuthority(options.ca),
-    tlsDebug: normalizeTlsDebug(options.tlsDebug),
-    tlsDanger: normalizeTlsDanger(options.tlsDanger),
-  };
+  const multipartUpload = request._prepareMultipartUpload();
+
+  try {
+    const body = multipartUpload ? undefined : await request._getBodyBytesForDispatch();
+    const nativeOptions: NativeRequestOptions = {
+      url: request.url,
+      method: normalizeMethod(request.method),
+      headers: request.headers.toTuples(),
+      origHeaders: request.headers.toOriginalNames(),
+      body: body ? Buffer.from(body) : undefined,
+      multipart: multipartUpload?.body,
+      multipartUpload,
+      ...browser,
+      emulationJson: serializeEmulationOptions(options),
+      proxy,
+      disableSystemProxy,
+      dns,
+      ...timeout,
+      ...readTimeout,
+      ...connectTimeout,
+      poolIdleTimeout: options.poolIdleTimeout,
+      poolMaxIdlePerHost: options.poolMaxIdlePerHost,
+      poolMaxSize: options.poolMaxSize,
+      tlsSessionCacheCapacity: options.tlsSessionCacheCapacity,
+      disableDefaultHeaders: options.disableDefaultHeaders,
+      compress: options.compress,
+      http1Only: options.http1Only,
+      http2Only: options.http2Only,
+      ...localBind,
+      tlsIdentity,
+      ca,
+      tlsDebug,
+      tlsDanger,
+      connectionGroup: options.connectionGroup,
+      forbidConnectionReuse: options.forbidConnectionReuse,
+    };
+
+    if (clientId !== undefined) {
+      nativeOptions.clientId = clientId;
+      nativeOptions.clientCacheKey = createNativeClientCacheKey(nativeOptions);
+    }
+
+    return nativeOptions;
+  } catch (error) {
+    multipartUpload?.cancel(error);
+    throw error;
+  }
 }

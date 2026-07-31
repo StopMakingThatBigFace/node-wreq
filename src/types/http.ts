@@ -4,7 +4,7 @@ import type { Response } from '../http/response';
 import type { Hooks, HookState } from './hooks';
 import type {
   BodyInit,
-  BrowserProfile,
+  BrowserEmulation,
   CertificateAuthority,
   CookieJar,
   DnsOptions,
@@ -100,8 +100,10 @@ export interface WreqInit {
   baseURL?: string;
   /** Query parameters appended to the final request URL. */
   query?: Record<string, string | number | boolean | null | undefined>;
-  /** Browser fingerprint profile used by the native transport. */
-  browser?: BrowserProfile;
+  /** Browser fingerprint profile or automatic profile selection strategy. */
+  browser?: BrowserEmulation;
+  /** Custom multipart boundary. FormData uses a WebKit-style boundary by default. */
+  multipartBoundary?: string;
   /** Explicit proxy URL, or `false` to disable proxies entirely. */
   proxy?: string | false;
   /** DNS overrides used for hostname resolution. */
@@ -112,6 +114,14 @@ export interface WreqInit {
   readTimeout?: number;
   /** Connection establishment timeout in milliseconds. */
   connectTimeout?: number;
+  /** Maximum idle time for pooled connections, or `false` to disable idle expiry. */
+  poolIdleTimeout?: number | false;
+  /** Maximum idle pooled connections retained per origin. */
+  poolMaxIdlePerHost?: number;
+  /** Maximum total connections retained by the native client pool. */
+  poolMaxSize?: number;
+  /** Per-origin capacity of the native TLS session cache. */
+  tlsSessionCacheCapacity?: number;
   /** Retry policy or retry count. */
   retry?: number | RetryOptions;
   /** Redirect handling mode. */
@@ -152,6 +162,10 @@ export interface WreqInit {
   http1Options?: Http1Options;
   /** HTTP/2 transport tuning and fingerprinting options. */
   http2Options?: Http2Options;
+  /** Logical connection-pool partition for this request. */
+  connectionGroup?: string | number;
+  /** Discards the connection after this response instead of returning it to the pool. */
+  forbidConnectionReuse?: boolean;
   /** Callback invoked after each attempt with timing and outcome data. */
   onStats?: (stats: RequestStats) => void | Promise<void>;
   /** Mutable user-defined context copied into hook state. */
@@ -219,4 +233,6 @@ export interface WreqResponseMeta {
   readonly tls?: TlsPeerInfo;
   /** Converts the response body into a Node.js readable stream. */
   readable(): import('node:stream').Readable;
+  /** Prevents this response's connection from returning to the native pool. */
+  forbidConnectionReuse(): boolean;
 }

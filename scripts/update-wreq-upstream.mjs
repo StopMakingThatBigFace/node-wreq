@@ -105,6 +105,7 @@ async function main() {
     console.log(
       `Updating ${update.dependency}: ${update.currentVersion} -> ${update.latestVersion}`
     );
+
     updateLockfile(update.dependency, update.latestVersion);
   }
 }

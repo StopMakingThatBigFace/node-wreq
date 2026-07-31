@@ -1,5 +1,5 @@
-import { Headers } from '../../headers';
 import type { CookieJar } from '../../types';
+import { Headers } from '../../headers';
 import { Request } from '../request';
 import { Response } from '../response';
 

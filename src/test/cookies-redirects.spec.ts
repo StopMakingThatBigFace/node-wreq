@@ -126,6 +126,7 @@ describe('cookies and redirects', () => {
       body.cookie.includes('redirect_session=1'),
       'intermediate set-cookie should affect the next redirect hop'
     );
+
     assert.strictEqual(
       body.hookHeader,
       'active',
@@ -154,11 +155,13 @@ describe('cookies and redirects', () => {
       302,
       'manual redirect mode should return the redirect response'
     );
+
     assert.strictEqual(
       response.headers.get('location'),
       '/redirect/final',
       'manual redirect mode should expose Location'
     );
+
     assert.strictEqual(
       response.redirected,
       false,

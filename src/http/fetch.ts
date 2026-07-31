@@ -1,3 +1,4 @@
+import type { RedirectEntry, RequestInput, RetryDecisionContext, WreqInit } from '../types';
 import { HTTPError, RequestError } from '../errors';
 import {
   runAfterResponseHooks,
@@ -8,7 +9,6 @@ import {
   runInitHooks,
 } from '../hooks';
 import { normalizeMethod } from '../native/index';
-import type { RedirectEntry, RequestInput, RetryDecisionContext, WreqInit } from '../types';
 import { loadCookiesIntoRequest, persistResponseCookies } from './pipeline/cookies';
 import { dispatchNativeRequest, reportStats } from './pipeline/dispatch';
 import { isResponseStatusAllowed, normalizeRequestError, throwIfAborted } from './pipeline/errors';
@@ -18,7 +18,7 @@ import {
   finalizeResponse,
   isRedirectResponse,
   resolveRedirectLocation,
-  rewriteRedirectMethodAndBody,
+  rewriteRedirectMethod,
   stripRedirectSensitiveHeaders,
   toRedirectEntry,
 } from './pipeline/redirects';
@@ -26,6 +26,15 @@ import { runRetryDelay, shouldRetryRequest } from './pipeline/retries';
 
 /** Performs an HTTP request using the native transport pipeline. */
 export async function fetch(input: RequestInput, init?: WreqInit) {
+  return fetchWithNativeClient(input, init);
+}
+
+/** @internal Performs a request using a reusable native client owner. */
+export async function fetchWithNativeClient(
+  input: RequestInput,
+  init?: WreqInit,
+  clientId?: number
+) {
   const merged = await mergeInputAndInit(input, init);
   const state = (merged.init.context ? { ...merged.init.context } : {}) as Record<string, unknown>;
 
@@ -63,7 +72,7 @@ export async function fetch(input: RequestInput, init?: WreqInit) {
       let response =
         shortCircuit ??
         (await dispatchNativeRequest(
-          await buildNativeRequest(request, options),
+          await buildNativeRequest(request, options, clientId),
           startTime,
           options.signal
         ));
@@ -133,17 +142,18 @@ export async function fetch(input: RequestInput, init?: WreqInit) {
           });
         }
 
-        const rewritten = rewriteRedirectMethodAndBody(
-          normalizeMethod(request.method),
-          response.status,
-          (await request._cloneBodyBytes()) ?? undefined
-        );
+        const rewritten = rewriteRedirectMethod(normalizeMethod(request.method), response.status);
 
-        const nextRequest = request._replace({
-          url: nextUrl,
-          method: rewritten.method,
-          body: rewritten.body,
-        });
+        const nextRequest = rewritten.bodyDropped
+          ? request._replace({
+              url: nextUrl,
+              method: rewritten.method,
+              body: null,
+            })
+          : request._replace({
+              url: nextUrl,
+              method: rewritten.method,
+            });
 
         stripRedirectSensitiveHeaders(
           nextRequest.headers,

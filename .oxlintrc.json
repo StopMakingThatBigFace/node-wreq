@@ -1,41 +1,164 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "unicorn"],
   "jsPlugins": [
     {
       "name": "stylistic",
       "specifier": "@stylistic/eslint-plugin"
     }
   ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2022": true
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/.release/**",
+    "**/.release-stubs/**",
+    "**/.tmp-release/**",
+    "**/artifacts/**",
+    "**/src/generated/**",
+    "**/src/config/generated/**"
+  ],
   "rules": {
+    "curly": ["error", "all"],
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "import-x/no-duplicates": "warn",
+    "import/no-unassigned-import": "off",
+    "no-debugger": "error",
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "no-underscore-dangle": "off",
+    "no-var": "error",
+    "prefer-const": "error",
+    "radix": "error",
     "stylistic/padding-line-between-statements": [
       "error",
       {
         "blankLine": "always",
-        "prev": [
-          "const",
-          "let",
-          "var"
-        ],
+        "prev": ["const", "let", "var"],
         "next": "*"
       },
       {
         "blankLine": "always",
         "prev": "*",
-        "next": "return"
+        "next": ["const", "let", "var"]
       },
       {
         "blankLine": "any",
-        "prev": [
-          "const",
-          "let",
-          "var"
-        ],
-        "next": [
-          "const",
-          "let",
-          "var"
-        ]
+        "prev": ["const", "let", "var"],
+        "next": ["const", "let", "var"]
+      },
+      {
+        "blankLine": "always",
+        "prev": "*",
+        "next": "block-like"
+      },
+      {
+        "blankLine": "always",
+        "prev": "block-like",
+        "next": "*"
+      },
+      {
+        "blankLine": "always",
+        "prev": "*",
+        "next": {
+          "selector": "ExpressionStatement[expression.type='AwaitExpression']"
+        }
+      },
+      {
+        "blankLine": "never",
+        "prev": {
+          "selector": "ExpressionStatement[expression.type='AwaitExpression']"
+        },
+        "next": {
+          "selector": "ExpressionStatement[expression.type='AwaitExpression']"
+        }
+      },
+      {
+        "blankLine": "always",
+        "prev": {
+          "selector": "ExpressionStatement[expression.type='AwaitExpression']"
+        },
+        "next": {
+          "selector": "ExpressionStatement[expression.type='AwaitExpression']",
+          "lineMode": "multiline"
+        }
+      },
+      {
+        "blankLine": "always",
+        "prev": {
+          "selector": "ExpressionStatement[expression.type='AwaitExpression']",
+          "lineMode": "multiline"
+        },
+        "next": {
+          "selector": "ExpressionStatement[expression.type='AwaitExpression']"
+        }
+      },
+      {
+        "blankLine": "always",
+        "prev": {
+          "selector": ":not(ImportDeclaration)",
+          "lineMode": "multiline"
+        },
+        "next": "*"
+      },
+      {
+        "blankLine": "always",
+        "prev": {
+          "selector": "ImportDeclaration"
+        },
+        "next": {
+          "selector": ":not(ImportDeclaration)"
+        }
+      },
+      {
+        "blankLine": "always",
+        "prev": "*",
+        "next": "return"
       }
-    ]
-  }
+    ],
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-require-imports": "error",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "unicorn/filename-case": [
+      "error",
+      {
+        "cases": {
+          "camelCase": true,
+          "kebabCase": true,
+          "pascalCase": true
+        }
+      }
+    ],
+    "unicorn/prefer-node-protocol": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+      "rules": {
+        "no-undef": "off"
+      }
+    },
+    {
+      "files": ["src/native/binding.ts", "scripts/generate-browser-profiles.mjs"],
+      "rules": {
+        "@typescript-eslint/no-require-imports": "off"
+      }
+    }
+  ]
 }

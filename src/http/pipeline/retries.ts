@@ -1,5 +1,5 @@
-import { normalizeMethod } from '../../native/index';
 import type { ResolvedRetryOptions, RetryDecisionContext } from '../../types';
+import { normalizeMethod } from '../../native/index';
 import { inferErrorCode } from './errors';
 
 async function sleep(delayMs: number): Promise<void> {

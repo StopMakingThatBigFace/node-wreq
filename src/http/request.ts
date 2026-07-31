@@ -1,12 +1,13 @@
+import type { BodyInit, HeadersInit, NativeMultipartUpload, WreqInit } from '../types';
 import { Blob, Buffer } from 'node:buffer';
 import { ReadableStream } from 'node:stream/web';
 import { Headers } from '../headers';
-import type { BodyInit, HeadersInit, WreqInit } from '../types';
 import {
   cloneBodyInit,
   cloneBytes,
   createMultipartRequest,
   isFormDataBody,
+  MultipartBody,
   toBodyBytes,
 } from './body/bytes';
 
@@ -21,7 +22,7 @@ export class Request {
   /** Abort signal associated with the request, if any. */
   readonly signal: AbortSignal | null;
   #bodyBytes: Uint8Array | null;
-  #multipartBody: globalThis.Request | null;
+  #multipartBody: MultipartBody | null;
   #bodyUsed = false;
   #stream: ReadableStream<Uint8Array> | null = null;
 
@@ -39,10 +40,15 @@ export class Request {
       this.#multipartBody = null;
 
       if (init.body !== undefined) {
-        this.#setBody(init.body);
+        this.#setBody(init.body, init.multipartBoundary);
       } else {
         this.#bodyBytes = cloneBytes(input.#bodyBytes);
         this.#multipartBody = input.#multipartBody?.clone() ?? null;
+
+        if (init.multipartBoundary && this.#multipartBody) {
+          this.#multipartBody = this.#multipartBody.withBoundary(init.multipartBoundary);
+          this.headers.set('content-type', this.#multipartBody.contentType);
+        }
       }
 
       return;
@@ -54,7 +60,7 @@ export class Request {
     this.signal = init.signal ?? null;
     this.#bodyBytes = null;
     this.#multipartBody = null;
-    this.#setBody(init.body);
+    this.#setBody(init.body, init.multipartBoundary);
   }
 
   /** Returns the request body as a readable byte stream. */
@@ -158,6 +164,25 @@ export class Request {
     return new Uint8Array(await this.#multipartBody.clone().arrayBuffer());
   }
 
+  /** Internal helper that clones the source body without forcing multipart encoding. */
+  _cloneBodyInit(): BodyInit | null {
+    if (this.#bodyBytes !== null) {
+      return cloneBytes(this.#bodyBytes);
+    }
+
+    return this.#multipartBody?.cloneFormData() ?? null;
+  }
+
+  /** Internal helper that returns the explicit multipart boundary, when applicable. */
+  _getMultipartBoundary(): string | undefined {
+    return this.#multipartBody?.boundary;
+  }
+
+  /** Internal helper that prepares a native streaming multipart upload. */
+  _prepareMultipartUpload(): NativeMultipartUpload | undefined {
+    return this.#multipartBody?.prepareNativeUpload();
+  }
+
   /** Internal helper that prepares body bytes for native dispatch. */
   async _getBodyBytesForDispatch(): Promise<Uint8Array | undefined> {
     return (await this._cloneBodyBytes()) ?? undefined;
@@ -193,7 +218,7 @@ export class Request {
     return next;
   }
 
-  #setBody(body: BodyInit | null | undefined): void {
+  #setBody(body: BodyInit | null | undefined, multipartBoundary?: string): void {
     const nextBody = cloneBodyInit(body);
 
     this.#stream = null;
@@ -206,15 +231,12 @@ export class Request {
     }
 
     if (isFormDataBody(nextBody)) {
-      const multipartBody = createMultipartRequest(nextBody);
-      const contentType = multipartBody.headers.get('content-type');
+      const multipartBody = createMultipartRequest(nextBody, multipartBoundary);
 
       this.#bodyBytes = null;
       this.#multipartBody = multipartBody;
 
-      if (contentType) {
-        this.headers.set('content-type', contentType);
-      }
+      this.headers.set('content-type', multipartBody.contentType);
 
       return;
     }

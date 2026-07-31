@@ -1,13 +1,14 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { TLSSocket } from 'node:tls';
 import { createServer, type Server } from 'node:https';
 import { after, before } from 'node:test';
-import type { TLSSocket } from 'node:tls';
 import { testCaPem, testServerCertPem, testServerKeyPem } from '../fixtures/mtls';
 
 function sendJson(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, {
     'content-type': 'application/json',
   });
+
   response.end(JSON.stringify(body));
 }
 

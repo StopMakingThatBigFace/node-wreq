@@ -1,5 +1,6 @@
 use crate::store::runtime::runtime;
 use anyhow::{Context, Result};
+use http_body_util::BodyExt;
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -51,10 +52,18 @@ pub fn read_body_chunk(handle: u64, _size: usize) -> Result<(Vec<u8>, bool)> {
     let body = get_body(handle)?;
     let chunk = runtime().block_on(async {
         let mut body = body.lock().await;
-        body.response
-            .chunk()
-            .await
-            .context("Failed to read response body chunk")
+        loop {
+            match body.response.frame().await {
+                Some(Ok(frame)) => {
+                    if let Ok(data) = frame.into_data() {
+                        break Ok(Some(data));
+                    }
+                }
+                Some(Err(error)) => break Err(error),
+                None => break Ok(None),
+            }
+        }
+        .context("Failed to read response body chunk")
     })?;
 
     let Some(chunk) = chunk else {
@@ -67,4 +76,15 @@ pub fn read_body_chunk(handle: u64, _size: usize) -> Result<(Vec<u8>, bool)> {
 
 pub fn cancel_body(handle: u64) -> bool {
     remove_body(handle).is_some()
+}
+
+pub fn forbid_body_recycle(handle: u64) -> Result<bool> {
+    let body = get_body(handle)?;
+    let body = body
+        .try_lock()
+        .map_err(|_| anyhow::anyhow!("Response body is currently being consumed"))?;
+
+    body.response.forbid_recycle();
+
+    Ok(true)
 }

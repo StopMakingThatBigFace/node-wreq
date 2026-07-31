@@ -1,5 +1,5 @@
-import { AbortError, HTTPError, RequestError, TimeoutError } from '../../errors';
 import type { ResolvedOptions } from '../../types';
+import { AbortError, HTTPError, RequestError, TimeoutError } from '../../errors';
 import { Request } from '../request';
 import { Response } from '../response';
 

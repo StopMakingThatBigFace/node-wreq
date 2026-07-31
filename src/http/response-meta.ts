@@ -1,6 +1,6 @@
-import { Readable } from 'node:stream';
 import type { RequestTimings, RedirectEntry, TlsPeerInfo, WreqResponseMeta } from '../types';
 import type { Response } from './response';
+import { Readable } from 'node:stream';
 
 /** Implementation backing the `response.wreq` metadata surface. */
 export class ResponseMeta implements WreqResponseMeta {
@@ -58,5 +58,10 @@ export class ResponseMeta implements WreqResponseMeta {
     const body = this.response.clone().body;
 
     return body ? Readable.fromWeb(body) : Readable.from([]);
+  }
+
+  /** Prevents the current native connection from being returned to the pool. */
+  forbidConnectionReuse(): boolean {
+    return this.response._forbidConnectionReuse();
   }
 }

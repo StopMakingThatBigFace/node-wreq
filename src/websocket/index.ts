@@ -1,3 +1,4 @@
+import type { WebSocketBinaryType, WebSocketInit } from '../types';
 import { serializeEmulationOptions } from '../config/emulation';
 import {
   normalizeDnsOptions,
@@ -12,15 +13,15 @@ import {
 } from '../config/tls';
 import { WebSocketError } from '../errors';
 import { loadCookiesIntoHeaders } from '../http/pipeline/cookies';
+import { createNativeClientCacheKey } from '../native/client-cache';
 import {
   nativeWebSocketClose,
   nativeWebSocketConnect,
   nativeWebSocketRead,
   nativeWebSocketSendBinary,
   nativeWebSocketSendText,
-  validateBrowserProfile,
+  normalizeBrowserEmulation,
 } from '../native/index';
-import type { WebSocketBinaryType, WebSocketInit } from '../types';
 import { CloseEvent } from './close-event';
 import { getSendByteLength, normalizeSendData, toMessageEventData } from './send-data';
 import {
@@ -89,6 +90,10 @@ type MessageHandler = ((event: MessageEvent) => void) | null;
 type CloseHandler = ((event: CloseEvent) => void) | null;
 type ErrorHandler = ((event: Event) => void) | null;
 
+const NATIVE_CLIENT_ID = Symbol('node-wreq.nativeClientId');
+
+type InternalWebSocketInit = WebSocketInit & { [NATIVE_CLIENT_ID]?: number };
+
 export { CloseEvent };
 
 /** Browser-style WebSocket implementation backed by the native transport. */
@@ -136,7 +141,8 @@ export class WebSocket extends EventTarget {
     super();
 
     this.url = resolveWebSocketUrl(url, init);
-    validateBrowserProfile(init.browser);
+    normalizeBrowserEmulation(init.browser);
+
     const headers = normalizeHeaders(init.headers);
     const protocols = normalizeProtocols(init.protocols);
 
@@ -146,6 +152,7 @@ export class WebSocket extends EventTarget {
         'SyntaxError'
       );
     }
+
     this.extensions = '';
     this.#binaryType = init.binaryType ?? 'blob';
     this.opened = new Promise<void>((resolve, reject) => {
@@ -153,7 +160,7 @@ export class WebSocket extends EventTarget {
       this.#rejectOpened = reject;
     });
 
-    void this.#connect(init, headers, protocols);
+    void this.#connect(init, headers, protocols, (init as InternalWebSocketInit)[NATIVE_CLIENT_ID]);
   }
 
   /** Current WebSocket ready state. */
@@ -305,23 +312,34 @@ export class WebSocket extends EventTarget {
   async #connect(
     init: WebSocketInit,
     headers: import('../headers').Headers,
-    protocols: string[]
+    protocols: string[],
+    clientId?: number
   ): Promise<void> {
     await loadCookiesIntoHeaders(init.cookieJar, this.url, headers);
 
     try {
       const localBind = normalizeLocalBindOptions(init);
       const { proxy, disableSystemProxy } = normalizeProxyOptions(init.proxy);
-      const connection = await nativeWebSocketConnect({
+      const browser = normalizeBrowserEmulation(init.browser);
+
+      if (init.forceHttp2 && init.httpVersion === '1.1') {
+        throw new TypeError("forceHttp2 conflicts with httpVersion: '1.1'");
+      }
+
+      const nativeOptions: import('../types').NativeWebSocketConnectOptions = {
         url: this.url,
         headers: headers.toTuples(),
         origHeaders: headers.toOriginalNames(),
-        browser: init.browser,
+        ...browser,
         emulationJson: serializeEmulationOptions(init),
         proxy,
         disableSystemProxy,
         dns: normalizeDnsOptions(init.dns),
         ...resolveNativeTimeout(init.timeout),
+        poolIdleTimeout: init.poolIdleTimeout,
+        poolMaxIdlePerHost: init.poolMaxIdlePerHost,
+        poolMaxSize: init.poolMaxSize,
+        tlsSessionCacheCapacity: init.tlsSessionCacheCapacity,
         disableDefaultHeaders: init.disableDefaultHeaders ?? false,
         tlsIdentity: normalizeTlsIdentity(init.tlsIdentity),
         ca: normalizeCertificateAuthority(init.ca),
@@ -329,6 +347,7 @@ export class WebSocket extends EventTarget {
         tlsDanger: normalizeTlsDanger(init.tlsDanger),
         protocols,
         forceHttp2: init.forceHttp2,
+        httpVersion: init.httpVersion,
         acceptUnmaskedFrames: init.acceptUnmaskedFrames,
         ...resolveNativeWebSocketBufferSize(init.readBufferSize, 'readBufferSize'),
         ...resolveNativeWebSocketBufferSize(init.writeBufferSize, 'writeBufferSize'),
@@ -336,10 +355,18 @@ export class WebSocket extends EventTarget {
         ...resolveNativeWebSocketSize(init.maxFrameSize, 'maxFrameSize'),
         ...resolveNativeWebSocketSize(init.maxMessageSize, 'maxMessageSize'),
         ...localBind,
-      });
+      };
+
+      if (clientId !== undefined) {
+        nativeOptions.clientId = clientId;
+        nativeOptions.clientCacheKey = createNativeClientCacheKey(nativeOptions);
+      }
+
+      const connection = await nativeWebSocketConnect(nativeOptions);
 
       this.#handle = connection.handle;
       this.#protocol = connection.protocol ?? '';
+
       if (connection.protocol && protocols.length > 0 && !protocols.includes(connection.protocol)) {
         throw new WebSocketError(`Server selected unexpected subprotocol: ${connection.protocol}`);
       }
@@ -390,17 +417,17 @@ export class WebSocket extends EventTarget {
     }
   }
 
-  #setEventHandler(
+  #setEventHandler<T extends Event>(
     type: string,
-    current: ((event: any) => void) | null,
-    next: ((event: any) => void) | null
+    current: ((event: T) => void) | null,
+    next: ((event: T) => void) | null
   ): void {
     if (current) {
-      this.removeEventListener(type, current);
+      this.removeEventListener(type, current as (event: Event) => void);
     }
 
     if (next) {
-      this.addEventListener(type, next);
+      this.addEventListener(type, next as (event: Event) => void);
     }
   }
 
@@ -428,6 +455,7 @@ export class WebSocket extends EventTarget {
 
     this.#settled = true;
     this.#readyState = WebSocket.CLOSED;
+
     if (this.#handle !== undefined) {
       this.#handle = undefined;
     }
@@ -442,7 +470,19 @@ export class WebSocket extends EventTarget {
 
 /** Connects a WebSocket and resolves once the socket is open. */
 export async function websocket(url: string | URL, init?: WebSocketInit): Promise<WebSocket> {
-  const socket = new WebSocket(url, init);
+  return websocketWithNativeClient(url, init);
+}
+
+/** @internal Connects a WebSocket using a reusable native client owner. */
+export async function websocketWithNativeClient(
+  url: string | URL,
+  init?: WebSocketInit,
+  clientId?: number
+): Promise<WebSocket> {
+  const internalInit: InternalWebSocketInit =
+    clientId === undefined ? (init ?? {}) : { ...init, [NATIVE_CLIENT_ID]: clientId };
+
+  const socket = new WebSocket(url, internalInit);
 
   await socket.opened;
 

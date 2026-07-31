@@ -1,8 +1,9 @@
 use anyhow::{bail, Result};
 use wreq::{
     http2::{PseudoId, SettingId},
-    tls::{AlpnProtocol, AlpsProtocol, CertificateCompressionAlgorithm, TlsVersion},
+    tls::{compress::CertificateCompressor, AlpnProtocol, AlpsProtocol, KeyShare, TlsVersion},
 };
+use wreq_util::emulate::compress::{BrotliCompressor, ZlibCompressor, ZstdCompressor};
 
 pub fn parse_tls_version(value: &str) -> Result<TlsVersion> {
     match value {
@@ -34,12 +35,28 @@ pub fn parse_alps_protocol(value: &str) -> Result<AlpsProtocol> {
 
 pub fn parse_certificate_compression_algorithm(
     value: &str,
-) -> Result<CertificateCompressionAlgorithm> {
+) -> Result<&'static dyn CertificateCompressor> {
     match value {
-        "zlib" => Ok(CertificateCompressionAlgorithm::ZLIB),
-        "brotli" => Ok(CertificateCompressionAlgorithm::BROTLI),
-        "zstd" => Ok(CertificateCompressionAlgorithm::ZSTD),
+        "zlib" => Ok(&ZlibCompressor),
+        "brotli" => Ok(&BrotliCompressor),
+        "zstd" => Ok(&ZstdCompressor),
         other => bail!("Invalid certificate compression algorithm: {other}"),
+    }
+}
+
+pub fn parse_key_share(value: &str) -> Result<KeyShare> {
+    match value {
+        "P256" => Ok(KeyShare::P256),
+        "P384" => Ok(KeyShare::P384),
+        "P521" => Ok(KeyShare::P521),
+        "X25519" => Ok(KeyShare::X25519),
+        "X25519_MLKEM768" => Ok(KeyShare::X25519_MLKEM768),
+        "X25519_KYBER768_DRAFT00" => Ok(KeyShare::X25519_KYBER768_DRAFT00),
+        "P256_KYBER768_DRAFT00" => Ok(KeyShare::P256_KYBER768_DRAFT00),
+        "MLKEM1024" => Ok(KeyShare::MLKEM1024),
+        "FFDHE2048" => Ok(KeyShare::FFDHE2048),
+        "FFDHE3072" => Ok(KeyShare::FFDHE3072),
+        other => bail!("Invalid TLS key share: {other}"),
     }
 }
 

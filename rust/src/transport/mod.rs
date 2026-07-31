@@ -1,3 +1,4 @@
+mod client;
 mod cookies;
 mod dns;
 mod headers;

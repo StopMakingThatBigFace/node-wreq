@@ -1,5 +1,5 @@
-import { Buffer } from 'node:buffer';
 import type { NativeWebSocketReadResult, WebSocketBinaryType } from '../types';
+import { Buffer } from 'node:buffer';
 
 export function getSendByteLength(data: string | Blob | ArrayBuffer | ArrayBufferView): number {
   if (typeof data === 'string') {
@@ -72,6 +72,7 @@ export function toMessageEventData(
     case 'text': {
       return result.data;
     }
+
     case 'binary': {
       if (binaryType === 'arraybuffer') {
         const bytes = result.data;
@@ -81,6 +82,7 @@ export function toMessageEventData(
 
       return new Blob([result.data]);
     }
+
     case 'close': {
       throw new TypeError('Close frames cannot be converted to message events');
     }

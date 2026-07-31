@@ -1,5 +1,3 @@
-import { execSync } from 'node:child_process';
-import { resolve } from 'node:path';
 import type {
   NativeRequestOptions,
   NativeResponse,
@@ -7,6 +5,8 @@ import type {
   NativeWebSocketConnection,
   NativeWebSocketReadResult,
 } from '../types';
+import { execSync } from 'node:child_process';
+import { resolve } from 'node:path';
 
 export type NativeBinding = {
   request: (options: NativeRequestOptions) => {
@@ -14,6 +14,11 @@ export type NativeBinding = {
     promise: Promise<NativeResponse>;
   };
   cancelRequest: (handle: number) => boolean;
+  createUpload: () => number;
+  writeUploadChunk: (handle: number, chunk: Buffer) => Promise<void>;
+  failUpload: (handle: number, message: string) => Promise<void>;
+  finishUpload: (handle: number) => boolean;
+  releaseClient: (clientId: number) => boolean;
   websocketConnect: (options: NativeWebSocketConnectOptions) => Promise<NativeWebSocketConnection>;
   websocketRead: (handle: number) => Promise<NativeWebSocketReadResult>;
   websocketSendText: (handle: number, text: string) => Promise<void>;
@@ -27,6 +32,7 @@ export type NativeBinding = {
     done: boolean;
   }>;
   cancelBody: (handle: number) => boolean;
+  forbidBodyRecycle: (handle: number) => boolean;
   getProfiles: () => string[];
 };
 

@@ -1,8 +1,7 @@
 use neon::prelude::*;
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use strum::VariantArray;
-use wreq_util::Emulation as BrowserEmulation;
+use wreq_util::Profile as BrowserEmulation;
 
 static PROFILE_NAMES: OnceLock<Vec<String>> = OnceLock::new();
 static PROFILE_MAP: OnceLock<HashMap<String, BrowserEmulation>> = OnceLock::new();
@@ -36,7 +35,7 @@ pub(crate) fn parse_browser_emulation(browser: &str) -> BrowserEmulation {
     profile_map()
         .get(browser)
         .copied()
-        .unwrap_or(BrowserEmulation::Chrome137)
+        .unwrap_or(BrowserEmulation::Chrome149)
 }
 
 fn get_profiles(mut cx: FunctionContext) -> JsResult<JsArray> {

@@ -1,7 +1,7 @@
+import type { HttpMethod, RedirectEntry } from '../../types';
 import { RequestError } from '../../errors';
 import { Headers } from '../../headers';
 import { normalizeMethod } from '../../native/index';
-import type { BodyInit, HttpMethod, RedirectEntry } from '../../types';
 import { Response } from '../response';
 
 const REDIRECT_STATUS_CODES = new Set([300, 301, 302, 303, 307, 308]);
@@ -44,19 +44,16 @@ export function stripRedirectSensitiveHeaders(
   }
 }
 
-export function rewriteRedirectMethodAndBody(
+export function rewriteRedirectMethod(
   method: HttpMethod,
-  status: number,
-  body: BodyInit | null | undefined
+  status: number
 ): {
   method: HttpMethod;
-  body: BodyInit | null | undefined;
   bodyDropped: boolean;
 } {
   if (status === 303) {
     return {
       method: method === 'HEAD' ? 'HEAD' : 'GET',
-      body: undefined,
       bodyDropped: true,
     };
   }
@@ -64,14 +61,12 @@ export function rewriteRedirectMethodAndBody(
   if ((status === 301 || status === 302) && method === 'POST') {
     return {
       method: 'GET',
-      body: undefined,
       bodyDropped: true,
     };
   }
 
   return {
     method,
-    body,
     bodyDropped: false,
   };
 }

@@ -1,6 +1,6 @@
+import { WebSocketServer, type WebSocket as WsPeer } from 'ws';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { after, before } from 'node:test';
-import { WebSocketServer, type WebSocket as WsPeer } from 'ws';
 
 const WINDOWS_1251_BODY = Buffer.from('cff0e8e2e5f22c20ece8f021', 'hex');
 const ZSTD_RESPONSE_BODY = Buffer.from('KLUv/QRYgQAAenN0ZCByZXNwb25zZSBva4lnadQ=', 'base64');
@@ -15,48 +15,51 @@ export function onceEvent<T extends Event>(target: EventTarget, type: string): P
   });
 }
 
+function readCookieHeader(request: IncomingMessage): string {
+  const cookie = request.headers.cookie;
+
+  if (Array.isArray(cookie)) {
+    return cookie.join('; ');
+  }
+
+  return cookie ?? '';
+}
+
+function sendJson(
+  response: ServerResponse,
+  status: number,
+  body: unknown,
+  headers?: Record<string, string | string[]>
+) {
+  response.writeHead(status, {
+    'content-type': 'application/json',
+    ...headers,
+  });
+
+  response.end(JSON.stringify(body));
+}
+
+function readQuery(url: URL): Record<string, string> {
+  return Object.fromEntries(url.searchParams.entries());
+}
+
+async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
+}
+
 export function setupLocalTestServer() {
   let localBaseUrl = '';
   let localServer: Server | undefined;
   let wsServer: WebSocketServer | undefined;
   const retryAttempts = new Map<string, number>();
-
-  function readCookieHeader(request: IncomingMessage): string {
-    const cookie = request.headers.cookie;
-
-    if (Array.isArray(cookie)) {
-      return cookie.join('; ');
-    }
-
-    return cookie ?? '';
-  }
-
-  function sendJson(
-    response: ServerResponse,
-    status: number,
-    body: unknown,
-    headers?: Record<string, string | string[]>
-  ) {
-    response.writeHead(status, {
-      'content-type': 'application/json',
-      ...headers,
-    });
-    response.end(JSON.stringify(body));
-  }
-
-  function readQuery(url: URL): Record<string, string> {
-    return Object.fromEntries(url.searchParams.entries());
-  }
-
-  async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
-    const chunks: Buffer[] = [];
-
-    for await (const chunk of request) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-
-    return Buffer.concat(chunks);
-  }
+  const connectionIds = new WeakMap<object, number>();
+  let nextConnectionId = 1;
 
   before(async () => {
     wsServer = new WebSocketServer({
@@ -100,6 +103,20 @@ export function setupLocalTestServer() {
       void (async () => {
         const url = new URL(request.url ?? '/', 'http://127.0.0.1');
 
+        if (url.pathname === '/connection/id') {
+          let connectionId = connectionIds.get(request.socket);
+
+          if (connectionId === undefined) {
+            connectionId = nextConnectionId;
+            nextConnectionId += 1;
+            connectionIds.set(request.socket, connectionId);
+          }
+
+          sendJson(response, 200, { connectionId });
+
+          return;
+        }
+
         if (url.pathname === '/retry') {
           const key = url.searchParams.get('key') ?? 'default';
           const failCount = Number(url.searchParams.get('failCount') ?? '0');
@@ -114,6 +131,30 @@ export function setupLocalTestServer() {
           }
 
           sendJson(response, 200, { attempt: count, retried: count > 1 });
+
+          return;
+        }
+
+        if (url.pathname === '/retry/body') {
+          const key = url.searchParams.get('key') ?? 'default-body';
+          const failCount = Number(url.searchParams.get('failCount') ?? '0');
+          const count = (retryAttempts.get(key) ?? 0) + 1;
+          const body = await readRequestBody(request);
+
+          retryAttempts.set(key, count);
+
+          if (count <= failCount) {
+            sendJson(response, 503, { attempt: count });
+
+            return;
+          }
+
+          sendJson(response, 200, {
+            attempt: count,
+            body: body.toString('utf8'),
+            bodyBase64: body.toString('base64'),
+            headers: request.headers,
+          });
 
           return;
         }
@@ -158,6 +199,7 @@ export function setupLocalTestServer() {
             response.writeHead(200, {
               'content-type': 'application/json',
             });
+
             response.end(JSON.stringify({ delayedConnection: true }));
           }, delayMs);
 
@@ -296,6 +338,7 @@ export function setupLocalTestServer() {
             'content-type': 'text/plain; charset=windows-1251',
             'content-length': String(WINDOWS_1251_BODY.length),
           });
+
           response.end(WINDOWS_1251_BODY);
 
           return;
@@ -307,6 +350,7 @@ export function setupLocalTestServer() {
             'content-encoding': 'zstd',
             'content-length': String(ZSTD_RESPONSE_BODY.length),
           });
+
           response.end(ZSTD_RESPONSE_BODY);
 
           return;
@@ -325,6 +369,7 @@ export function setupLocalTestServer() {
             location: '/redirect/final',
             'set-cookie': 'redirect_session=1; Path=/',
           });
+
           response.end();
 
           return;
@@ -334,6 +379,19 @@ export function setupLocalTestServer() {
           response.writeHead(302, {
             location: '/redirect/final',
           });
+
+          response.end();
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/preserve-body') {
+          await readRequestBody(request);
+
+          response.writeHead(307, {
+            location: '/body/echo',
+          });
+
           response.end();
 
           return;
@@ -346,6 +404,7 @@ export function setupLocalTestServer() {
             response.writeHead(302, {
               location: `/redirect/chain?count=${count - 1}`,
             });
+
             response.end();
 
             return;
@@ -354,6 +413,7 @@ export function setupLocalTestServer() {
           response.writeHead(302, {
             location: '/redirect/final',
           });
+
           response.end();
 
           return;
@@ -363,6 +423,7 @@ export function setupLocalTestServer() {
           response.writeHead(302, {
             location: '/redirect/loop-b',
           });
+
           response.end();
 
           return;
@@ -372,6 +433,7 @@ export function setupLocalTestServer() {
           response.writeHead(302, {
             location: '/redirect/loop-a',
           });
+
           response.end();
 
           return;
@@ -392,6 +454,7 @@ export function setupLocalTestServer() {
         response.writeHead(500, {
           'content-type': 'application/json',
         });
+
         response.end(
           JSON.stringify({
             error: error instanceof Error ? error.message : String(error),
