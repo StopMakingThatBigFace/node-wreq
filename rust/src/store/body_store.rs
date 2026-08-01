@@ -50,7 +50,7 @@ fn remove_body(handle: u64) -> Option<SharedBody> {
 
 pub fn read_body_chunk(handle: u64, _size: usize) -> Result<(Vec<u8>, bool)> {
     let body = get_body(handle)?;
-    let chunk = runtime().block_on(async {
+    let chunk = match runtime().block_on(async {
         let mut body = body.lock().await;
         loop {
             match body.response.frame().await {
@@ -64,7 +64,15 @@ pub fn read_body_chunk(handle: u64, _size: usize) -> Result<(Vec<u8>, bool)> {
             }
         }
         .context("Failed to read response body chunk")
-    })?;
+    }) {
+        Ok(chunk) => chunk,
+        Err(error) => {
+            // The body errored, so the connection is unusable — drop the stored body to release it and its
+            // socket instead of leaking the entry in BODY_STORE (mirrors the done-path cleanup below).
+            remove_body(handle);
+            return Err(error);
+        }
+    };
 
     let Some(chunk) = chunk else {
         remove_body(handle);
