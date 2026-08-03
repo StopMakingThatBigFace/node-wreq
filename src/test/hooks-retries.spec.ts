@@ -43,7 +43,7 @@ describe('hooks and retries', () => {
         beforeRequest: [
           () =>
             new WreqResponse(JSON.stringify({ shortCircuited: true }), {
-              status: 204,
+              status: 200,
               headers: { 'content-type': 'application/json' },
               url: 'https://local/short-circuit',
             }),
@@ -51,7 +51,7 @@ describe('hooks and retries', () => {
       },
     });
 
-    assert.strictEqual(response.status, 204);
+    assert.strictEqual(response.status, 200);
     assert.deepStrictEqual(await response.json(), { shortCircuited: true });
     assert.strictEqual(response.url, 'https://local/short-circuit');
     assert.deepStrictEqual(response.wreq.timings, {

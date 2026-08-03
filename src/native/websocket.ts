@@ -6,10 +6,15 @@ import type {
 import { Buffer } from 'node:buffer';
 import { getBinding } from './binding';
 
-export async function nativeWebSocketConnect(
-  options: NativeWebSocketConnectOptions
-): Promise<NativeWebSocketConnection> {
+export function nativeWebSocketConnect(options: NativeWebSocketConnectOptions): {
+  handle: number;
+  promise: Promise<NativeWebSocketConnection>;
+} {
   return getBinding().websocketConnect(options);
+}
+
+export function nativeWebSocketCancelConnect(handle: number): boolean {
+  return getBinding().websocketCancelConnect(handle);
 }
 
 export async function nativeWebSocketRead(handle: number): Promise<NativeWebSocketReadResult> {
@@ -30,4 +35,8 @@ export async function nativeWebSocketClose(
   reason?: string
 ): Promise<void> {
   return getBinding().websocketClose(handle, code, reason);
+}
+
+export function nativeWebSocketTerminate(handle: number): boolean {
+  return getBinding().websocketTerminate(handle);
 }

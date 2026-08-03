@@ -1,4 +1,9 @@
-import type { BodyInit, NativeMultipartStreamPart, NativeMultipartUpload } from '../../types';
+import type {
+  BodyInit,
+  NativeBodyStreamUpload,
+  NativeMultipartStreamPart,
+  NativeMultipartUpload,
+} from '../../types';
 import { Buffer } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import {
@@ -16,6 +21,84 @@ function isFileValue(value: string | Blob): value is File {
 
 export function isFormDataBody(body: BodyInit | null | undefined): body is FormData {
   return typeof FormData !== 'undefined' && body instanceof FormData;
+}
+
+export function isBlobBody(body: BodyInit | null | undefined): body is Blob {
+  return typeof Blob !== 'undefined' && body instanceof Blob;
+}
+
+export function isReadableStreamBody(
+  body: BodyInit | null | undefined
+): body is ReadableStream<Uint8Array> {
+  return typeof ReadableStream !== 'undefined' && body instanceof ReadableStream;
+}
+
+/** Converts Fetch-compatible iterable bodies into a web ReadableStream. */
+export function toReadableStreamBody(
+  body: BodyInit | null | undefined
+): ReadableStream<Uint8Array> | undefined {
+  if (isReadableStreamBody(body)) {
+    return body;
+  }
+
+  if (
+    body === undefined ||
+    body === null ||
+    typeof body === 'string' ||
+    isBlobBody(body) ||
+    isFormDataBody(body) ||
+    body instanceof URLSearchParams ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body)
+  ) {
+    return undefined;
+  }
+
+  if (Symbol.asyncIterator in Object(body)) {
+    const iterator = (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+
+    return new ReadableStream<Uint8Array>(
+      {
+        pull: async (controller) => {
+          const result = await iterator.next();
+
+          if (result.done) {
+            controller.close();
+          } else {
+            controller.enqueue(result.value);
+          }
+        },
+        cancel: async (reason) => {
+          await iterator.return?.(reason);
+        },
+      },
+      { highWaterMark: 0 }
+    );
+  }
+
+  if (Symbol.iterator in Object(body)) {
+    const iterator = (body as Iterable<Uint8Array>)[Symbol.iterator]();
+
+    return new ReadableStream<Uint8Array>(
+      {
+        pull: (controller) => {
+          const result = iterator.next();
+
+          if (result.done) {
+            controller.close();
+          } else {
+            controller.enqueue(result.value);
+          }
+        },
+        cancel: (reason) => {
+          iterator.return?.(reason);
+        },
+      },
+      { highWaterMark: 0 }
+    );
+  }
+
+  return undefined;
 }
 
 export function cloneFormData(body: FormData): FormData {
@@ -327,6 +410,190 @@ export class MultipartBody {
   }
 }
 
+/** Lazily consumed raw request body backed by a Blob or ReadableStream. */
+export class StreamingBody {
+  readonly contentLength?: number;
+  readonly contentType?: string;
+  #source: Blob | ReadableStream<Uint8Array>;
+  #stream: ReadableStream<Uint8Array> | null = null;
+  #reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  #used = false;
+
+  constructor(source: Blob | ReadableStream<Uint8Array>) {
+    this.#source = source;
+
+    if (isBlobBody(source)) {
+      this.contentLength = source.size;
+      this.contentType = source.type || undefined;
+    }
+  }
+
+  get bodyUsed(): boolean {
+    return this.#used;
+  }
+
+  get locked(): boolean {
+    return this.#stream?.locked === true;
+  }
+
+  get stream(): ReadableStream<Uint8Array> {
+    this.#stream ??= new ReadableStream<Uint8Array>(
+      {
+        pull: async (controller) => {
+          this.#used = true;
+          this.#reader ??= this.#openSource().getReader();
+
+          const result = await this.#reader.read();
+
+          if (result.done) {
+            controller.close();
+
+            return;
+          }
+
+          if (!(result.value instanceof Uint8Array)) {
+            throw new TypeError('Request body stream must produce Uint8Array chunks');
+          }
+
+          controller.enqueue(result.value);
+        },
+        cancel: async (reason) => {
+          this.#used = true;
+          this.#reader ??= this.#openSource().getReader();
+
+          await this.#reader.cancel(reason);
+        },
+      },
+      { highWaterMark: 0 }
+    );
+
+    return this.#stream;
+  }
+
+  clone(): StreamingBody {
+    if (isBlobBody(this.#source)) {
+      return new StreamingBody(this.#source.slice(0, this.#source.size, this.#source.type));
+    }
+
+    if (this.#used || this.locked || this.#reader) {
+      throw new TypeError('Request body is already used');
+    }
+
+    const [left, right] = this.#source.tee();
+
+    this.#source = left;
+
+    return new StreamingBody(right);
+  }
+
+  transfer(): StreamingBody {
+    if (this.#used || this.locked || this.#reader) {
+      throw new TypeError('Request body is already used');
+    }
+
+    const transferred = new StreamingBody(this.#source);
+
+    this.#used = true;
+
+    return transferred;
+  }
+
+  prepareNativeUpload(): NativeBodyStreamUpload {
+    const replayableBlob = isBlobBody(this.#source);
+
+    if (!replayableBlob && (this.#used || this.locked)) {
+      throw new TypeError('Request body is already used');
+    }
+
+    const handle = nativeCreateUpload();
+    let started = false;
+    let cancelled = false;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
+    const cancel = (reason?: unknown) => {
+      if (cancelled) {
+        return;
+      }
+
+      cancelled = true;
+      void reader?.cancel(reason).catch(() => undefined);
+      nativeFinishUpload(handle);
+    };
+
+    return {
+      body: {
+        uploadHandle: handle,
+        length: this.contentLength,
+      },
+      cancel,
+      start: async (signal?: AbortSignal | null) => {
+        if (started) {
+          throw new TypeError('Request body upload has already started');
+        }
+
+        started = true;
+
+        if (cancelled || signal?.aborted) {
+          cancel(signal?.reason);
+
+          return;
+        }
+
+        try {
+          if (replayableBlob) {
+            this.#used = true;
+            reader = (this.#source as Blob).stream().getReader();
+          } else {
+            reader = this.stream.getReader();
+          }
+
+          while (true) {
+            if (cancelled || signal?.aborted) {
+              cancel(signal?.reason);
+
+              return;
+            }
+
+            const result = await reader.read();
+
+            if (result.done) {
+              nativeFinishUpload(handle);
+
+              return;
+            }
+
+            await nativeWriteUploadChunk(handle, result.value);
+          }
+        } catch (error) {
+          if (cancelled) {
+            return;
+          }
+
+          try {
+            await nativeFailUpload(handle, error);
+          } catch {
+            // The native request may already have closed its receiver.
+          }
+
+          throw error;
+        } finally {
+          if (reader) {
+            try {
+              reader.releaseLock();
+            } catch {
+              // Cancellation may still be settling an outstanding read.
+            }
+          }
+        }
+      },
+    };
+  }
+
+  #openSource(): ReadableStream<Uint8Array> {
+    return isBlobBody(this.#source) ? this.#source.stream() : this.#source;
+  }
+}
+
 export function createMultipartRequest(body: FormData, boundary?: string): MultipartBody {
   if (typeof globalThis.Request === 'undefined') {
     throw new TypeError('multipart/form-data requests require global Request support');
@@ -377,6 +644,14 @@ export function cloneBodyInit(body: BodyInit | null | undefined): BodyInit | nul
 
   if (isFormDataBody(body)) {
     return cloneFormData(body);
+  }
+
+  if (isBlobBody(body)) {
+    return body.slice(0, body.size, body.type);
+  }
+
+  if (isReadableStreamBody(body)) {
+    return body;
   }
 
   if (typeof body === 'string') {

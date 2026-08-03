@@ -48,12 +48,24 @@ export type TlsDataInput = string | TlsBinaryInput;
 
 /** Header input accepted by `fetch`, `Request`, and `WebSocket` helpers. */
 export type HeadersInit =
-  | Record<string, string | number | boolean | null | undefined>
+  | globalThis.Headers
+  | Record<string, string | readonly string[] | number | boolean | null | undefined>
   | HeaderTuple[]
+  | string[][]
   | Iterable<HeaderTuple>;
 
 /** Request and response body input supported by the library. */
-export type BodyInit = string | URLSearchParams | FormData | Buffer | ArrayBuffer | ArrayBufferView;
+export type BodyInit =
+  | string
+  | URLSearchParams
+  | FormData
+  | Blob
+  | Buffer
+  | ArrayBuffer
+  | ArrayBufferView
+  | ReadableStream<Uint8Array>
+  | AsyncIterable<Uint8Array>
+  | Iterable<Uint8Array>;
 
 /** DNS overrides applied by the native transport. */
 export interface DnsOptions {

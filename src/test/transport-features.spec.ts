@@ -5,6 +5,11 @@ import { createClient, fetch, Request } from '../node-wreq';
 import { setupLocalTestServer } from './helpers/local-server';
 import { setupProxyTestServer } from './helpers/proxy-server';
 
+async function* createAsyncBodyChunks(): AsyncIterable<Uint8Array> {
+  yield Buffer.from('async ');
+  yield Buffer.from('iterable');
+}
+
 describe('transport features', () => {
   const { getBaseUrl } = setupLocalTestServer();
   const proxyServer = setupProxyTestServer();
@@ -53,6 +58,304 @@ describe('transport features', () => {
       Buffer.from(body.bodyBase64, 'base64').byteLength,
       'native multipart should retain an exact content length while streaming files'
     );
+  });
+
+  test('should preserve an explicit content-type for FormData bodies', async () => {
+    const formData = new FormData();
+
+    formData.append('alpha', 'explicit-header');
+
+    const response = await fetch(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-node-wreq-test',
+      },
+      body: formData,
+    });
+
+    const body = await response.json<{ body: string; headers: Record<string, string> }>();
+
+    assert.strictEqual(body.headers['content-type'], 'application/x-node-wreq-test');
+    assert.ok(body.body.includes('name="alpha"'));
+    assert.ok(body.body.includes('explicit-header'));
+  });
+
+  test('should reject GET and HEAD request bodies like the Fetch API', () => {
+    for (const method of ['GET', 'HEAD']) {
+      assert.throws(
+        () =>
+          new Request('https://node-wreq.invalid/', {
+            method,
+            body: 'not allowed',
+          }),
+        (error: unknown) =>
+          error instanceof TypeError && error.message.includes('GET/HEAD method cannot have body')
+      );
+    }
+  });
+
+  test('should validate and normalize Request URLs and methods like Fetch', () => {
+    const request = new Request('https://EXAMPLE.com:443/a/../b', {
+      method: 'patch',
+    });
+
+    assert.strictEqual(request.url, 'https://example.com/b');
+    assert.strictEqual(request.method, 'patch');
+    assert.strictEqual(new Request('https://example.com/', { method: 123 as never }).method, '123');
+    assert.strictEqual(
+      new Request('https://example.com/', { method: null as never }).method,
+      'null'
+    );
+
+    assert.throws(() => new Request('not a URL'), TypeError);
+    assert.throws(() => new Request('https://user:pass@example.com/'), TypeError);
+    assert.throws(() => new Request('https://example.com/', { method: 'CONNECT' }), TypeError);
+  });
+
+  test('should preserve the request MIME type when reading a Blob', async () => {
+    const request = new Request('https://node-wreq.invalid/', {
+      method: 'POST',
+      headers: {
+        'content-type': 'Application/JSON; Charset=UTF-8',
+      },
+      body: '{"typed":true}',
+    });
+
+    const blob = await request.blob();
+
+    assert.strictEqual(blob.type, 'application/json; charset=utf-8');
+  });
+
+  test('should not disturb Request.body until the stream is read', async () => {
+    const request = new Request('https://node-wreq.invalid/', {
+      method: 'POST',
+      body: 'stream lifecycle',
+    });
+
+    const first = request.body;
+    const second = request.body;
+
+    assert.ok(first);
+    assert.strictEqual(first, second);
+    assert.strictEqual(request.bodyUsed, false);
+
+    const reader = first.getReader();
+    const chunk = await reader.read();
+
+    assert.strictEqual(chunk.done, false);
+    assert.strictEqual(request.bodyUsed, true);
+    assert.strictEqual(Buffer.from(chunk.value).toString(), 'stream lifecycle');
+  });
+
+  test('should transfer a Request body when constructing or fetching from it', async () => {
+    const source = new Request('https://node-wreq.invalid/', {
+      method: 'POST',
+      body: 'constructor transfer',
+    });
+
+    const sourceBody = source.body;
+    const transferred = new Request(source);
+
+    assert.strictEqual(source.bodyUsed, true);
+    assert.strictEqual(sourceBody?.locked, true);
+    assert.strictEqual(transferred.bodyUsed, false);
+    assert.strictEqual(await transferred.text(), 'constructor transfer');
+
+    const fetchSource = new Request(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: 'fetch transfer',
+    });
+
+    const response = await fetch(fetchSource);
+    const body = await response.json<{ body: string }>();
+
+    assert.strictEqual(fetchSource.bodyUsed, true);
+    assert.strictEqual(fetchSource.body?.locked, true);
+    assert.strictEqual(body.body, 'fetch transfer');
+  });
+
+  test('should stream raw Blob bodies without calling Blob.arrayBuffer()', async () => {
+    const blob = new Blob(['streamed blob'], { type: 'text/x-node-wreq-test' });
+    const originalArrayBuffer = Blob.prototype.arrayBuffer;
+
+    Blob.prototype.arrayBuffer = async () => {
+      throw new Error('Blob.arrayBuffer() must not be used by request dispatch');
+    };
+
+    try {
+      const response = await fetch(`${getBaseUrl()}/body/echo`, {
+        method: 'POST',
+        body: blob,
+      });
+
+      const body = await response.json<{ body: string; headers: Record<string, string> }>();
+
+      assert.strictEqual(body.body, 'streamed blob');
+      assert.strictEqual(body.headers['content-type'], 'text/x-node-wreq-test');
+      assert.strictEqual(Number(body.headers['content-length']), blob.size);
+    } finally {
+      Blob.prototype.arrayBuffer = originalArrayBuffer;
+    }
+  });
+
+  test('should replay streaming Blob bodies for retries and preserving redirects', async () => {
+    const blob = new Blob(['replayable blob'], { type: 'text/plain' });
+    const key = `blob-${Date.now()}-${Math.random()}`;
+    const retried = await fetch(
+      `${getBaseUrl()}/retry/body?key=${encodeURIComponent(key)}&failCount=1`,
+      {
+        method: 'POST',
+        body: blob,
+        retry: {
+          limit: 1,
+          methods: ['POST'],
+          statusCodes: [503],
+        },
+      }
+    );
+
+    const retryBody = await retried.json<{ attempt: number; body: string }>();
+
+    assert.strictEqual(retryBody.attempt, 2);
+    assert.strictEqual(retryBody.body, 'replayable blob');
+
+    const redirected = await fetch(`${getBaseUrl()}/redirect/preserve-body`, {
+      method: 'POST',
+      body: blob,
+    });
+
+    const redirectBody = await redirected.json<{ body: string; method: string }>();
+
+    assert.strictEqual(redirectBody.method, 'POST');
+    assert.strictEqual(redirectBody.body, 'replayable blob');
+  });
+
+  test('should stream ReadableStream request bodies through the native transport', async () => {
+    const chunks = ['streamed ', 'without ', 'buffering'];
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks.shift();
+
+        if (chunk === undefined) {
+          controller.close();
+
+          return;
+        }
+
+        controller.enqueue(Buffer.from(chunk));
+      },
+    });
+
+    const response = await fetch(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: stream,
+    });
+
+    const body = await response.json<{ body: string }>();
+
+    assert.strictEqual(body.body, 'streamed without buffering');
+  });
+
+  test('should stream async iterable request bodies', async () => {
+    const response = await fetch(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: createAsyncBodyChunks(),
+    });
+
+    const body = await response.json<{ body: string }>();
+
+    assert.strictEqual(body.body, 'async iterable');
+  });
+
+  test('should cancel an active raw request stream when aborted', async () => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(streamController) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        streamController.enqueue(Buffer.alloc(256 * 1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    const pending = fetch(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: stream,
+      signal: controller.signal,
+    });
+
+    setTimeout(() => controller.abort(new Error('stop raw upload')), 10);
+
+    await assert.rejects(
+      pending,
+      (error: unknown) => error instanceof Error && error.name === 'AbortError'
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.strictEqual(cancelled, true);
+  });
+
+  test('should propagate raw request stream failures', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error('broken raw source'));
+      },
+    });
+
+    await assert.rejects(
+      fetch(`${getBaseUrl()}/body/echo`, {
+        method: 'POST',
+        body: stream,
+      }),
+      (error: unknown) => error instanceof Error && error.message.includes('broken raw source')
+    );
+  });
+
+  test('should reject preserving redirects for non-replayable request streams', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(Buffer.from('one-shot stream'));
+        controller.close();
+      },
+    });
+
+    await assert.rejects(
+      fetch(`${getBaseUrl()}/redirect/preserve-body`, {
+        method: 'POST',
+        body: stream,
+      }),
+      (error: unknown) => error instanceof Error && error.message.includes('already used')
+    );
+  });
+
+  test('should consume a global Request body as a stream', async () => {
+    let arrayBufferCalled = false;
+    const input = new globalThis.Request(`${getBaseUrl()}/body/echo`, {
+      method: 'POST',
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(Buffer.from('global request stream'));
+          controller.close();
+        },
+      }),
+      duplex: 'half',
+    });
+
+    Object.defineProperty(input, 'arrayBuffer', {
+      value: () => {
+        arrayBufferCalled = true;
+        throw new Error('global Request.arrayBuffer() must not be used by request dispatch');
+      },
+    });
+
+    const response = await fetch(input);
+    const body = await response.json<{ body: string }>();
+
+    assert.strictEqual(body.body, 'global request stream');
+    assert.strictEqual(arrayBufferCalled, false);
+    assert.strictEqual(input.bodyUsed, true);
   });
 
   test('should stream FormData files without calling Blob.arrayBuffer()', async () => {

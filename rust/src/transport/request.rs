@@ -106,6 +106,19 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
     if let Some(body) = body {
         request = match body {
             RequestBody::Bytes(bytes) => request.body(bytes),
+            RequestBody::Stream { receiver, length } => {
+                if let Some(length) = length {
+                    let has_content_length = headers
+                        .iter()
+                        .any(|(name, _)| name.eq_ignore_ascii_case("content-length"));
+
+                    if !has_content_length {
+                        request = request.header("content-length", length);
+                    }
+                }
+
+                request.body(Body::wrap_stream(ReceiverStream::new(receiver)))
+            }
             RequestBody::Multipart(options) => request.multipart(build_multipart(options)?),
         };
     }

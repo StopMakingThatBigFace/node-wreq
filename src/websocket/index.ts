@@ -16,14 +16,21 @@ import { loadCookiesIntoHeaders } from '../http/pipeline/cookies';
 import { createNativeClientCacheKey } from '../native/client-cache';
 import {
   nativeWebSocketClose,
+  nativeWebSocketCancelConnect,
   nativeWebSocketConnect,
   nativeWebSocketRead,
   nativeWebSocketSendBinary,
   nativeWebSocketSendText,
+  nativeWebSocketTerminate,
   normalizeBrowserEmulation,
 } from '../native/index';
 import { CloseEvent } from './close-event';
-import { getSendByteLength, normalizeSendData, toMessageEventData } from './send-data';
+import {
+  getSendByteLength,
+  normalizeSendData,
+  snapshotSendData,
+  toMessageEventData,
+} from './send-data';
 import {
   normalizeHeaders,
   normalizeProtocols,
@@ -93,6 +100,7 @@ type ErrorHandler = ((event: Event) => void) | null;
 const NATIVE_CLIENT_ID = Symbol('node-wreq.nativeClientId');
 
 type InternalWebSocketInit = WebSocketInit & { [NATIVE_CLIENT_ID]?: number };
+type WebSocketConstructorOptions = WebSocketInit | string | string[];
 
 export { CloseEvent };
 
@@ -126,19 +134,28 @@ export class WebSocket extends EventTarget {
   #rejectOpened!: (reason?: unknown) => void;
   #readyState = WebSocket.CONNECTING;
   #handle?: number;
+  #connectHandle?: number;
   #protocol = '';
   #binaryType: WebSocketBinaryType;
   #bufferedAmount = 0;
   #sendQueue = Promise.resolve();
   #settled = false;
+  #openSettled = false;
+  #closeEnqueued = false;
+  #closeRequest: { code?: number; reason?: string } | null = null;
   #onopen: OpenHandler = null;
   #onmessage: MessageHandler = null;
   #onclose: CloseHandler = null;
   #onerror: ErrorHandler = null;
 
   /** Creates and starts connecting a new WebSocket instance. */
-  constructor(url: string | URL, init: WebSocketInit = {}) {
+  constructor(url: string | URL, protocolsOrInit: WebSocketConstructorOptions = {}) {
     super();
+
+    const init: WebSocketInit =
+      typeof protocolsOrInit === 'string' || Array.isArray(protocolsOrInit)
+        ? { protocols: protocolsOrInit }
+        : protocolsOrInit;
 
     this.url = resolveWebSocketUrl(url, init);
     normalizeBrowserEmulation(init.browser);
@@ -159,6 +176,8 @@ export class WebSocket extends EventTarget {
       this.#resolveOpened = resolve;
       this.#rejectOpened = reject;
     });
+
+    void this.opened.catch(() => undefined);
 
     void this.#connect(init, headers, protocols, (init as InternalWebSocketInit)[NATIVE_CLIENT_ID]);
   }
@@ -181,7 +200,7 @@ export class WebSocket extends EventTarget {
   /** Updates the binary representation used for incoming binary messages. */
   set binaryType(value: WebSocketBinaryType) {
     if (value !== 'blob' && value !== 'arraybuffer') {
-      throw new TypeError(`Invalid WebSocket binaryType: ${value}`);
+      return;
     }
 
     this.#binaryType = value;
@@ -238,28 +257,32 @@ export class WebSocket extends EventTarget {
 
   /** Queues a text or binary message for sending. */
   send(data: string | Blob | ArrayBuffer | ArrayBufferView): void {
-    if (this.#readyState !== WebSocket.OPEN || this.#handle === undefined) {
+    const queuedBytes = getSendByteLength(data);
+
+    if (this.#readyState === WebSocket.CONNECTING) {
       throw new DOMException('WebSocket is not open', 'InvalidStateError');
     }
 
-    const queuedBytes = getSendByteLength(data);
-
     this.#bufferedAmount += queuedBytes;
+
+    if (this.#readyState !== WebSocket.OPEN || this.#handle === undefined) {
+      return;
+    }
+
+    const handle = this.#handle;
+    const queuedData = snapshotSendData(data);
+
     this.#sendQueue = this.#sendQueue
       .then(async () => {
-        const normalized = await normalizeSendData(data);
-
-        if (this.#readyState !== WebSocket.OPEN || this.#handle === undefined) {
-          throw new DOMException('WebSocket is not open', 'InvalidStateError');
-        }
+        const normalized = await normalizeSendData(queuedData);
 
         if (normalized.type === 'text') {
-          await nativeWebSocketSendText(this.#handle, normalized.data);
+          await nativeWebSocketSendText(handle, normalized.data);
 
           return;
         }
 
-        await nativeWebSocketSendBinary(this.#handle, normalized.data);
+        await nativeWebSocketSendBinary(handle, normalized.data);
       })
       .catch((error: unknown) => {
         this.#handleError(error);
@@ -270,43 +293,58 @@ export class WebSocket extends EventTarget {
   }
 
   /** Starts the closing handshake. */
-  close(code?: number, reason = ''): void {
+  close(code?: number, reason?: string): void {
+    const normalizedReason = reason ?? '';
+
     if (code !== undefined) {
       validateCloseCode(code);
     }
 
-    validateCloseReason(reason);
+    validateCloseReason(normalizedReason);
 
     if (this.#readyState === WebSocket.CLOSING || this.#readyState === WebSocket.CLOSED) {
       return;
     }
 
+    const wasConnecting = this.#readyState === WebSocket.CONNECTING;
+
     this.#readyState = WebSocket.CLOSING;
+    this.#closeRequest = {
+      code,
+      reason: code === undefined && normalizedReason === '' ? undefined : normalizedReason,
+    };
+
+    if (wasConnecting) {
+      const error = new WebSocketError('WebSocket was closed before opening');
+
+      this.#rejectOpen(error);
+
+      if (this.#connectHandle !== undefined) {
+        nativeWebSocketCancelConnect(this.#connectHandle);
+        this.#connectHandle = undefined;
+      }
+
+      queueMicrotask(() => {
+        if (this.#settled) {
+          return;
+        }
+
+        this.#handleError(error);
+        this.#finalizeClose({
+          code: 1006,
+          reason: '',
+          wasClean: false,
+        });
+      });
+
+      return;
+    }
 
     if (this.#handle === undefined) {
       return;
     }
 
-    const handle = this.#handle;
-
-    this.#handle = undefined;
-
-    void nativeWebSocketClose(handle, code, reason)
-      .then(() => {
-        this.#finalizeClose({
-          code: code ?? 1000,
-          reason,
-          wasClean: true,
-        });
-      })
-      .catch((error: unknown) => {
-        this.#handleError(error);
-        this.#finalizeClose({
-          code: code ?? 1006,
-          reason,
-          wasClean: false,
-        });
-      });
+    this.#enqueueClose(this.#handle);
   }
 
   async #connect(
@@ -315,9 +353,15 @@ export class WebSocket extends EventTarget {
     protocols: string[],
     clientId?: number
   ): Promise<void> {
-    await loadCookiesIntoHeaders(init.cookieJar, this.url, headers);
+    let connectHandle: number | undefined;
 
     try {
+      await loadCookiesIntoHeaders(init.cookieJar, this.url, headers);
+
+      if (this.#settled || this.#readyState !== WebSocket.CONNECTING) {
+        return;
+      }
+
       const localBind = normalizeLocalBindOptions(init);
       const { proxy, disableSystemProxy } = normalizeProxyOptions(init.proxy);
       const browser = normalizeBrowserEmulation(init.browser);
@@ -362,7 +406,18 @@ export class WebSocket extends EventTarget {
         nativeOptions.clientCacheKey = createNativeClientCacheKey(nativeOptions);
       }
 
-      const connection = await nativeWebSocketConnect(nativeOptions);
+      const connectTask = nativeWebSocketConnect(nativeOptions);
+
+      connectHandle = connectTask.handle;
+      this.#connectHandle = connectHandle;
+
+      const connection = await connectTask.promise;
+
+      if (this.#settled || this.#readyState !== WebSocket.CONNECTING) {
+        nativeWebSocketTerminate(connection.handle);
+
+        return;
+      }
 
       this.#handle = connection.handle;
       this.#protocol = connection.protocol ?? '';
@@ -372,22 +427,37 @@ export class WebSocket extends EventTarget {
       }
 
       (this as { extensions: string }).extensions = connection.extensions ?? '';
+
       this.#readyState = WebSocket.OPEN;
-      this.#resolveOpened();
+      this.#resolveOpen();
       this.dispatchEvent(new Event('open'));
       void this.#pumpMessages();
     } catch (error) {
+      if (this.#settled) {
+        return;
+      }
+
       this.#handleError(error);
+
+      if (this.#handle !== undefined) {
+        nativeWebSocketTerminate(this.#handle);
+        this.#handle = undefined;
+      }
+
       this.#finalizeClose({
         code: 1006,
         reason: '',
         wasClean: false,
       });
+    } finally {
+      if (connectHandle !== undefined && this.#connectHandle === connectHandle) {
+        this.#connectHandle = undefined;
+      }
     }
   }
 
   async #pumpMessages(): Promise<void> {
-    while (this.#readyState === WebSocket.OPEN && this.#handle !== undefined) {
+    while (!this.#settled && this.#handle !== undefined) {
       try {
         const result = await nativeWebSocketRead(this.#handle);
 
@@ -398,11 +468,14 @@ export class WebSocket extends EventTarget {
           return;
         }
 
-        this.dispatchEvent(
-          new MessageEvent('message', {
-            data: toMessageEventData(result, this.#binaryType),
-          })
-        );
+        if (this.#readyState === WebSocket.OPEN) {
+          this.dispatchEvent(
+            new MessageEvent('message', {
+              data: toMessageEventData(result, this.#binaryType),
+              origin: new URL(this.url).origin,
+            })
+          );
+        }
       } catch (error) {
         this.#handleError(error);
         this.#handle = undefined;
@@ -441,11 +514,49 @@ export class WebSocket extends EventTarget {
       writable: false,
     });
 
-    if (this.#readyState === WebSocket.CONNECTING) {
-      this.#rejectOpened(error);
-    }
+    this.#rejectOpen(error);
 
     this.dispatchEvent(event);
+  }
+
+  #resolveOpen(): void {
+    if (this.#openSettled) {
+      return;
+    }
+
+    this.#openSettled = true;
+    this.#resolveOpened();
+  }
+
+  #rejectOpen(error: unknown): void {
+    if (this.#openSettled) {
+      return;
+    }
+
+    this.#openSettled = true;
+    this.#rejectOpened(error);
+  }
+
+  #enqueueClose(handle: number): void {
+    if (this.#closeEnqueued) {
+      return;
+    }
+
+    this.#closeEnqueued = true;
+
+    const close = this.#closeRequest ?? {};
+
+    this.#sendQueue = this.#sendQueue
+      .then(() => nativeWebSocketClose(handle, close.code, close.reason))
+      .catch((error: unknown) => {
+        this.#handleError(error);
+        this.#handle = undefined;
+        this.#finalizeClose({
+          code: 1006,
+          reason: '',
+          wasClean: false,
+        });
+      });
   }
 
   #finalizeClose(init: { code: number; reason: string; wasClean: boolean }): void {
@@ -460,9 +571,7 @@ export class WebSocket extends EventTarget {
       this.#handle = undefined;
     }
 
-    if (init.wasClean === false) {
-      this.#rejectOpened(new WebSocketError('WebSocket connection closed before opening'));
-    }
+    this.#rejectOpen(new WebSocketError('WebSocket connection closed before opening'));
 
     this.dispatchEvent(new CloseEvent('close', init));
   }

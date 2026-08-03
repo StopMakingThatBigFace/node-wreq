@@ -538,6 +538,26 @@ fn js_object_to_multipart_body(
     }))
 }
 
+fn js_object_to_stream_body(
+    cx: &mut FunctionContext,
+    obj: Handle<JsObject>,
+) -> NeonResult<Option<RequestBody>> {
+    let Some(value) = obj.get_opt::<JsValue, _, _>(cx, "bodyStream")? else {
+        return Ok(None);
+    };
+    let stream = value.downcast::<JsObject, _>(cx).or_throw(cx)?;
+    let handle_value: Handle<JsValue> = stream.get(cx, "uploadHandle")?;
+    let handle = js_value_to_safe_u64(cx, handle_value, "bodyStream.uploadHandle")?;
+    let length = stream
+        .get_opt::<JsValue, _, _>(cx, "length")?
+        .map(|value| js_value_to_safe_u64(cx, value, "bodyStream.length"))
+        .transpose()?;
+    let receiver =
+        take_upload_receiver(handle).or_else(|error| cx.throw_error(error.to_string()))?;
+
+    Ok(Some(RequestBody::Stream { receiver, length }))
+}
+
 pub(crate) fn js_object_to_request_options(
     cx: &mut FunctionContext,
     obj: Handle<JsObject>,
@@ -571,16 +591,22 @@ pub(crate) fn js_object_to_request_options(
         .map(|value| js_value_to_bytes(cx, value))
         .transpose()?;
     let multipart = js_object_to_multipart_body(cx, obj)?;
+    let stream = js_object_to_stream_body(cx, obj)?;
 
-    if body_bytes.is_some() && multipart.is_some() {
-        return cx.throw_type_error("body and multipart cannot both be provided");
+    let body_count = usize::from(body_bytes.is_some())
+        + usize::from(multipart.is_some())
+        + usize::from(stream.is_some());
+
+    if body_count > 1 {
+        return cx.throw_type_error("body, bodyStream, and multipart are mutually exclusive");
     }
 
-    let body = match (body_bytes, multipart) {
-        (Some(bytes), None) => Some(RequestBody::Bytes(bytes)),
-        (None, Some(multipart)) => Some(RequestBody::Multipart(multipart)),
-        (None, None) => None,
-        (Some(_), Some(_)) => unreachable!(),
+    let body = match (body_bytes, multipart, stream) {
+        (Some(bytes), None, None) => Some(RequestBody::Bytes(bytes)),
+        (None, Some(multipart), None) => Some(RequestBody::Multipart(multipart)),
+        (None, None, Some(stream)) => Some(stream),
+        (None, None, None) => None,
+        _ => unreachable!(),
     };
 
     let proxy = obj

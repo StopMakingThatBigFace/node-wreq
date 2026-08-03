@@ -1,93 +1,170 @@
 import type { BodyInit, HeadersInit, NativeMultipartUpload, WreqInit } from '../types';
-import { Blob, Buffer } from 'node:buffer';
+import { Buffer } from 'node:buffer';
 import { ReadableStream } from 'node:stream/web';
 import { Headers } from '../headers';
+import { normalizeMethod } from '../native';
 import {
   cloneBodyInit,
   cloneBytes,
   createMultipartRequest,
+  isBlobBody,
   isFormDataBody,
+  isReadableStreamBody,
   MultipartBody,
+  StreamingBody,
+  toReadableStreamBody,
   toBodyBytes,
 } from './body/bytes';
+import { parseResponseFormData } from './body/form-data';
+
+function isGlobalRequest(value: unknown): value is globalThis.Request {
+  return (
+    typeof globalThis.Request !== 'undefined' &&
+    value instanceof globalThis.Request &&
+    !(value instanceof Request)
+  );
+}
 
 /** WHATWG-style request wrapper used by the public API. */
 export class Request {
   /** Fully resolved request URL. */
   readonly url: string;
-  /** Uppercased HTTP method. */
+  /** Normalized HTTP method. */
   readonly method: string;
   /** Request headers. */
   readonly headers: Headers;
   /** Abort signal associated with the request, if any. */
-  readonly signal: AbortSignal | null;
+  readonly signal: AbortSignal;
+  /** Cache mode exposed for Fetch API compatibility. */
+  readonly cache: globalThis.Request['cache'];
+  /** Credentials mode exposed for Fetch API compatibility. */
+  readonly credentials: globalThis.Request['credentials'];
+  /** Request destination exposed for Fetch API compatibility. */
+  readonly destination: globalThis.Request['destination'];
+  /** Subresource integrity metadata. */
+  readonly integrity: string;
+  /** Whether the request is eligible to outlive its initiating context. */
+  readonly keepalive: boolean;
+  /** Fetch mode exposed for compatibility. */
+  readonly mode: globalThis.Request['mode'];
+  /** Redirect mode used by the request. */
+  readonly redirect: globalThis.Request['redirect'];
+  /** Request referrer. */
+  readonly referrer: string;
+  /** Referrer policy used by the request. */
+  readonly referrerPolicy: globalThis.Request['referrerPolicy'];
+  /** Streaming request duplex mode. */
+  readonly duplex = 'half' as const;
   #bodyBytes: Uint8Array | null;
   #multipartBody: MultipartBody | null;
+  #streamingBody: StreamingBody | null;
   #bodyUsed = false;
   #stream: ReadableStream<Uint8Array> | null = null;
+  #transferredBodyReaders: ReadableStreamDefaultReader<Uint8Array>[] = [];
 
-  constructor(input: string | URL | Request, init: WreqInit = {}) {
-    if (input instanceof Request) {
-      if (input.bodyUsed) {
-        throw new TypeError('Request body is already used');
-      }
+  constructor(input: string | URL | Request | globalThis.Request, init: WreqInit = {}) {
+    const inputRequest = input instanceof Request || isGlobalRequest(input) ? input : undefined;
 
-      this.url = String(init.baseURL ? new URL(input.url, init.baseURL) : input.url);
-      this.method = (init.method ?? input.method).toUpperCase();
-      this.headers = new Headers(init.headers ?? input.headers);
-      this.signal = init.signal ?? input.signal ?? null;
-      this.#bodyBytes = null;
-      this.#multipartBody = null;
-
-      if (init.body !== undefined) {
-        this.#setBody(init.body, init.multipartBoundary);
-      } else {
-        this.#bodyBytes = cloneBytes(input.#bodyBytes);
-        this.#multipartBody = input.#multipartBody?.clone() ?? null;
-
-        if (init.multipartBoundary && this.#multipartBody) {
-          this.#multipartBody = this.#multipartBody.withBoundary(init.multipartBoundary);
-          this.headers.set('content-type', this.#multipartBody.contentType);
-        }
-      }
-
-      return;
+    if (inputRequest?.bodyUsed && init.body === undefined) {
+      throw new TypeError('Request body is already used');
     }
 
-    this.url = String(init.baseURL ? new URL(String(input), init.baseURL) : input);
-    this.method = (init.method ?? 'GET').toUpperCase();
-    this.headers = new Headers(init.headers);
-    this.signal = init.signal ?? null;
+    const inputUrl = inputRequest?.url ?? String(input);
+    let parsedUrl: URL;
+
+    try {
+      parsedUrl = init.baseURL ? new URL(inputUrl, init.baseURL) : new URL(inputUrl);
+    } catch {
+      throw new TypeError(`Invalid request URL: ${inputUrl}`);
+    }
+
+    if (parsedUrl.username || parsedUrl.password) {
+      throw new TypeError('Request URL must not include credentials');
+    }
+
+    this.url = parsedUrl.toString();
+    this.method = normalizeMethod(init.method === undefined ? inputRequest?.method : init.method);
+    this.headers = new Headers(init.headers ?? inputRequest?.headers);
+    this.signal = init.signal ?? inputRequest?.signal ?? new AbortController().signal;
+    this.cache = init.cache ?? inputRequest?.cache ?? 'default';
+    this.credentials = init.credentials ?? inputRequest?.credentials ?? 'same-origin';
+    this.destination = inputRequest?.destination ?? '';
+    this.integrity = init.integrity ?? inputRequest?.integrity ?? '';
+    this.keepalive = init.keepalive ?? inputRequest?.keepalive ?? false;
+    this.mode = init.mode ?? inputRequest?.mode ?? 'cors';
+    this.redirect = init.redirect ?? inputRequest?.redirect ?? 'follow';
+    this.referrer = init.referrer ?? inputRequest?.referrer ?? 'about:client';
+    this.referrerPolicy = init.referrerPolicy ?? inputRequest?.referrerPolicy ?? '';
     this.#bodyBytes = null;
     this.#multipartBody = null;
-    this.#setBody(init.body, init.multipartBoundary);
+    this.#streamingBody = null;
+
+    const inheritedBody =
+      init.body === undefined &&
+      (input instanceof Request ? input.#hasBody() : isGlobalRequest(input) && input.body !== null);
+
+    if (
+      (this.method === 'GET' || this.method === 'HEAD') &&
+      (init.body !== undefined && init.body !== null ? true : inheritedBody)
+    ) {
+      throw new TypeError('Request with GET/HEAD method cannot have body.');
+    }
+
+    if (init.body !== undefined) {
+      this.#setBody(init.body, init.multipartBoundary);
+    } else if (input instanceof Request) {
+      const boundary = init.multipartBoundary ?? input.#multipartBody?.boundary;
+
+      this.#setBody(input._takeBodyInit(), boundary, init.multipartBoundary !== undefined);
+    } else if (isGlobalRequest(input) && input.body) {
+      const transferred = new globalThis.Request(input, { method: this.method });
+
+      this.#setBody(transferred.body as ReadableStream<Uint8Array> | null, init.multipartBoundary);
+    }
   }
 
   /** Returns the request body as a readable byte stream. */
-  get body(): ReadableStream<Uint8Array> | null {
-    if (this.#bodyUsed || (this.#bodyBytes === null && this.#multipartBody === null)) {
+  get body(): globalThis.Request['body'] {
+    if (!this.#hasBody()) {
       return null;
     }
 
-    this.#bodyUsed = true;
-    this.#stream ??= new ReadableStream<Uint8Array>({
-      start: async (controller) => {
-        controller.enqueue(await this.#readBodyBytes());
-        controller.close();
-      },
-    });
+    if (this.#streamingBody) {
+      return this.#streamingBody.stream as globalThis.Request['body'];
+    }
 
-    return this.#stream;
+    let emitted = false;
+
+    this.#stream ??= new ReadableStream<Uint8Array>(
+      {
+        pull: async (controller) => {
+          this.#bodyUsed = true;
+
+          if (!emitted) {
+            emitted = true;
+            controller.enqueue(await this.#readBodyBytes());
+          }
+
+          controller.close();
+        },
+        cancel: () => {
+          this.#bodyUsed = true;
+        },
+      },
+      { highWaterMark: 0 }
+    );
+
+    return this.#stream as globalThis.Request['body'];
   }
 
   /** Indicates whether the request body has already been consumed. */
   get bodyUsed(): boolean {
-    return this.#bodyUsed;
+    return this.#bodyUsed || this.#streamingBody?.bodyUsed === true;
   }
 
   /** Creates a clone whose body can be consumed independently. */
   clone(): Request {
-    if (this.#bodyUsed) {
+    if (this.bodyUsed || this.#stream?.locked || this.#streamingBody?.locked) {
       throw new TypeError('Request body is already used');
     }
 
@@ -95,10 +172,19 @@ export class Request {
       method: this.method,
       headers: this.headers,
       signal: this.signal ?? undefined,
+      cache: this.cache,
+      credentials: this.credentials,
+      integrity: this.integrity,
+      keepalive: this.keepalive,
+      mode: this.mode,
+      redirect: this.redirect,
+      referrer: this.referrer,
+      referrerPolicy: this.referrerPolicy,
     });
 
     cloned.#bodyBytes = cloneBytes(this.#bodyBytes);
     cloned.#multipartBody = this.#multipartBody?.clone() ?? null;
+    cloned.#streamingBody = this.#streamingBody?.clone() ?? null;
 
     return cloned;
   }
@@ -118,9 +204,16 @@ export class Request {
     return Uint8Array.from(await this.#consumeBytes()).buffer;
   }
 
+  /** Reads the request body as bytes. */
+  async bytes(): Promise<Uint8Array<ArrayBuffer>> {
+    return new Uint8Array(await this.#consumeBytes());
+  }
+
   /** Reads the request body as a `Blob`. */
   async blob(): Promise<Blob> {
-    return new Blob([await this.#consumeBytes()]);
+    return new globalThis.Blob([await this.#consumeBytes()], {
+      type: this.headers.get('content-type') ?? '',
+    });
   }
 
   /** Reads the request body as `FormData`. */
@@ -135,20 +228,9 @@ export class Request {
       return this.#multipartBody.clone().formData();
     }
 
-    const contentType = this.headers.get('content-type')?.toLowerCase() ?? '';
+    const contentType = this.headers.get('content-type') ?? '';
 
-    if (!contentType.includes('application/x-www-form-urlencoded')) {
-      throw new TypeError(`Request content-type is not form data: ${contentType || 'unknown'}`);
-    }
-
-    const formData = new FormData();
-    const searchParams = new URLSearchParams(await this.text());
-
-    for (const [name, value] of searchParams) {
-      formData.append(name, value);
-    }
-
-    return formData;
+    return parseResponseFormData(await this.#consumeBytes(), contentType);
   }
 
   /** Internal helper that clones the encoded request body bytes. */
@@ -164,13 +246,33 @@ export class Request {
     return new Uint8Array(await this.#multipartBody.clone().arrayBuffer());
   }
 
-  /** Internal helper that clones the source body without forcing multipart encoding. */
-  _cloneBodyInit(): BodyInit | null {
-    if (this.#bodyBytes !== null) {
-      return cloneBytes(this.#bodyBytes);
+  /** Internal helper that transfers ownership of the body to a new request. */
+  _takeBodyInit(): BodyInit | null {
+    if (this.bodyUsed || this.#stream?.locked || this.#streamingBody?.locked) {
+      throw new TypeError('Request body is already used');
     }
 
-    return this.#multipartBody?.cloneFormData() ?? null;
+    let body: BodyInit | null = null;
+
+    if (this.#bodyBytes !== null) {
+      body = cloneBytes(this.#bodyBytes);
+    } else if (this.#multipartBody) {
+      body = this.#multipartBody.cloneFormData();
+    } else if (this.#streamingBody) {
+      body = this.#streamingBody.transfer().stream;
+    }
+
+    if (body !== null) {
+      const originalStream = this.body;
+
+      this.#bodyUsed = true;
+
+      if (originalStream) {
+        this.#transferredBodyReaders.push(originalStream.getReader());
+      }
+    }
+
+    return body;
   }
 
   /** Internal helper that returns the explicit multipart boundary, when applicable. */
@@ -183,16 +285,18 @@ export class Request {
     return this.#multipartBody?.prepareNativeUpload();
   }
 
-  /** Internal helper that prepares body bytes for native dispatch. */
-  async _getBodyBytesForDispatch(): Promise<Uint8Array | undefined> {
-    return (await this._cloneBodyBytes()) ?? undefined;
+  /** Internal helper that prepares a native streaming raw-body upload. */
+  _prepareBodyStreamUpload(): import('../types').NativeBodyStreamUpload | undefined {
+    return this.#streamingBody?.prepareNativeUpload();
   }
 
-  /** Internal helper that marks the request body as consumed. */
-  _markBodyUsed(): void {
-    if (this.#bodyBytes !== null || this.#multipartBody !== null) {
-      this.#bodyUsed = true;
+  /** Internal helper that prepares body bytes for native dispatch. */
+  async _getBodyBytesForDispatch(): Promise<Uint8Array | undefined> {
+    if (this.#streamingBody) {
+      return undefined;
     }
+
+    return (await this._cloneBodyBytes()) ?? undefined;
   }
 
   /** Internal helper that creates a modified request copy. */
@@ -213,19 +317,25 @@ export class Request {
     if (!hasBodyOverride) {
       next.#bodyBytes = cloneBytes(this.#bodyBytes);
       next.#multipartBody = this.#multipartBody?.clone() ?? null;
+      next.#streamingBody = this.#streamingBody?.clone() ?? null;
     }
 
     return next;
   }
 
-  #setBody(body: BodyInit | null | undefined, multipartBoundary?: string): void {
-    const nextBody = cloneBodyInit(body);
+  #setBody(
+    body: BodyInit | null | undefined,
+    multipartBoundary?: string,
+    overwriteMultipartContentType = multipartBoundary !== undefined
+  ): void {
+    const nextBody = toReadableStreamBody(body) ?? cloneBodyInit(body);
 
     this.#stream = null;
 
     if (nextBody === null) {
       this.#bodyBytes = null;
       this.#multipartBody = null;
+      this.#streamingBody = null;
 
       return;
     }
@@ -235,14 +345,40 @@ export class Request {
 
       this.#bodyBytes = null;
       this.#multipartBody = multipartBody;
+      this.#streamingBody = null;
 
-      this.headers.set('content-type', multipartBody.contentType);
+      if (overwriteMultipartContentType || !this.headers.has('content-type')) {
+        this.headers.set('content-type', multipartBody.contentType);
+      }
+
+      return;
+    }
+
+    if (isBlobBody(nextBody) || isReadableStreamBody(nextBody)) {
+      const streamingBody = new StreamingBody(nextBody);
+
+      this.#bodyBytes = null;
+      this.#multipartBody = null;
+      this.#streamingBody = streamingBody;
+
+      if (streamingBody.contentType && !this.headers.has('content-type')) {
+        this.headers.set('content-type', streamingBody.contentType);
+      }
 
       return;
     }
 
     this.#bodyBytes = toBodyBytes(nextBody, 'Unsupported request body type');
     this.#multipartBody = null;
+    this.#streamingBody = null;
+
+    if (!this.headers.has('content-type')) {
+      if (typeof nextBody === 'string') {
+        this.headers.set('content-type', 'text/plain;charset=UTF-8');
+      } else if (nextBody instanceof URLSearchParams) {
+        this.headers.set('content-type', 'application/x-www-form-urlencoded;charset=UTF-8');
+      }
+    }
   }
 
   async #readBodyBytes(): Promise<Uint8Array> {
@@ -254,16 +390,45 @@ export class Request {
       return new Uint8Array(await this.#multipartBody.clone().arrayBuffer());
     }
 
+    if (this.#streamingBody) {
+      return this.#readStreamBytes(this.#streamingBody.stream);
+    }
+
     return new Uint8Array();
   }
 
   async #consumeBytes(): Promise<Uint8Array> {
-    if (this.#bodyUsed) {
+    if (this.bodyUsed || this.#stream?.locked || this.#streamingBody?.locked) {
       throw new TypeError('Request body is already used');
+    }
+
+    if (this.#streamingBody) {
+      return this.#readStreamBytes(this.#streamingBody.stream);
     }
 
     this.#bodyUsed = true;
 
     return this.#readBodyBytes();
+  }
+
+  #hasBody(): boolean {
+    return this.#bodyBytes !== null || this.#multipartBody !== null || this.#streamingBody !== null;
+  }
+
+  async #readStreamBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const result = await reader.read();
+
+      if (result.done) {
+        break;
+      }
+
+      chunks.push(result.value);
+    }
+
+    return new Uint8Array(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
   }
 }

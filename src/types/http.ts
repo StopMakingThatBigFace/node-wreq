@@ -87,7 +87,12 @@ export interface RequestStats {
 }
 
 /** Request options accepted by `fetch`, `Request`, and client helpers. */
-export interface WreqInit {
+export interface WreqInit extends Omit<
+  globalThis.RequestInit,
+  'body' | 'headers' | 'method' | 'redirect' | 'signal'
+> {
+  /** Cache mode retained for compatibility with the browser Request API. */
+  cache?: globalThis.Request['cache'];
   /** HTTP method used for the request. */
   method?: string;
   /** Request headers. */

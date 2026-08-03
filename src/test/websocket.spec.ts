@@ -5,6 +5,7 @@ import {
   CloseEvent as WreqCloseEvent,
   WebSocket as WreqWebSocket,
   createClient,
+  fetch,
   websocket,
 } from '../node-wreq';
 import { onceEvent, setupLocalTestServer } from './helpers/local-server';
@@ -50,6 +51,112 @@ describe('websocket', () => {
     assert.strictEqual(socket.readyState, WreqWebSocket.CLOSED);
   });
 
+  test('should support the standard constructor protocols argument and HTTP URL conversion', async () => {
+    const socket = new WreqWebSocket(`${getBaseUrl()}/ws`, 'chat');
+
+    await socket.opened;
+
+    assert.strictEqual(socket.url, getBaseUrl().replace('http://', 'ws://') + '/ws');
+    assert.strictEqual(socket.protocol, 'chat');
+
+    const connectedEvent = await onceEvent<MessageEvent>(socket, 'message');
+
+    assert.strictEqual(connectedEvent.origin, new URL(socket.url).origin);
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000, 'done');
+
+    await closePromise;
+
+    assert.doesNotThrow(() => socket.send('discarded after close'));
+    assert.strictEqual(socket.bufferedAmount, Buffer.byteLength('discarded after close'));
+  });
+
+  test('should fail promptly when close is called while connecting', async () => {
+    const socket = new WreqWebSocket(
+      getBaseUrl().replace('http://', 'ws://') + '/ws?upgradeDelay=500'
+    );
+
+    const events: string[] = [];
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.addEventListener('open', () => events.push('open'));
+    socket.addEventListener('error', () => events.push('error'));
+    socket.addEventListener('close', () => events.push('close'));
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const startTime = Date.now();
+
+    socket.close();
+
+    await assert.rejects(socket.opened, /closed before opening/);
+
+    const closeEvent = await closePromise;
+
+    assert.ok(Date.now() - startTime < 250, 'close should not wait for the pending upgrade');
+    assert.deepStrictEqual(events, ['error', 'close']);
+    assert.strictEqual(closeEvent.code, 1006);
+    assert.strictEqual(closeEvent.wasClean, false);
+    assert.strictEqual(socket.readyState, WreqWebSocket.CLOSED);
+  });
+
+  test('should surface cookie jar failures through error and close events', async () => {
+    const socket = new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      cookieJar: {
+        getCookies() {
+          throw new Error('cookie lookup failed');
+        },
+        setCookie() {},
+      },
+    });
+
+    const errorPromise = onceEvent<Event & { error?: Error }>(socket, 'error');
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    await assert.rejects(socket.opened, /cookie lookup failed/);
+
+    const [errorEvent, closeEvent] = await Promise.all([errorPromise, closePromise]);
+
+    assert.match(errorEvent.error?.message ?? '', /cookie lookup failed/);
+    assert.strictEqual(closeEvent.code, 1006);
+    assert.strictEqual(closeEvent.wasClean, false);
+  });
+
+  test('should report an empty clean close with the reserved 1005 event code', async () => {
+    const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws');
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close();
+
+    const closeEvent = await closePromise;
+
+    assert.strictEqual(closeEvent.code, 1005);
+    assert.strictEqual(closeEvent.reason, '');
+    assert.strictEqual(closeEvent.wasClean, true);
+  });
+
+  test('should use WHATWG URL and binaryType validation semantics', async () => {
+    for (const url of ['not a URL', 'ftp://example.com/socket']) {
+      assert.throws(
+        () => new WreqWebSocket(url),
+        (error: unknown) => error instanceof DOMException && error.name === 'SyntaxError'
+      );
+    }
+
+    const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws');
+
+    (socket as { binaryType: string }).binaryType = 'invalid';
+    assert.strictEqual(socket.binaryType, 'blob');
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000);
+
+    await closePromise;
+  });
+
   test('should support binary messages and arraybuffer binaryType', async () => {
     const socket = new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
       binaryType: 'arraybuffer',
@@ -60,7 +167,10 @@ describe('websocket', () => {
 
     const replyPromise = onceEvent<MessageEvent>(socket, 'message');
 
-    socket.send(new Uint8Array([1, 2, 3]));
+    const payload = new Uint8Array([1, 2, 3]);
+
+    socket.send(payload);
+    payload[0] = 9;
 
     const replyEvent = await replyPromise;
 
@@ -125,9 +235,38 @@ describe('websocket', () => {
           protocols: ['chat', 'chat'],
         }),
       (error: unknown) =>
-        error instanceof SyntaxError && error.message.includes('Duplicate WebSocket subprotocol'),
+        error instanceof DOMException &&
+        error.name === 'SyntaxError' &&
+        error.message.includes('Duplicate WebSocket subprotocol'),
       'duplicate websocket subprotocols should be rejected'
     );
+  });
+
+  test('should flush queued messages in order before closing', async () => {
+    const capture = `queued-${Date.now()}-${Math.random()}`;
+    const socket = await websocket(
+      getBaseUrl().replace('http://', 'ws://') + `/ws?capture=${encodeURIComponent(capture)}`
+    );
+
+    await onceEvent<MessageEvent>(socket, 'message');
+
+    const expected = Array.from({ length: 20 }, (_, index) => String(index));
+
+    for (const message of expected) {
+      socket.send(message);
+    }
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000, 'queued messages sent');
+
+    const closeEvent = await closePromise;
+    const response = await fetch(`${getBaseUrl()}/ws/messages?key=${encodeURIComponent(capture)}`);
+    const body = await response.json<{ messages: string[] }>();
+
+    assert.strictEqual(closeEvent.wasClean, true);
+    assert.deepStrictEqual(body.messages, expected);
+    assert.strictEqual(socket.bufferedAmount, 0);
   });
 
   test('should reject invalid websocket size limits', async () => {

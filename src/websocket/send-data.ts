@@ -1,6 +1,23 @@
 import type { NativeWebSocketReadResult, WebSocketBinaryType } from '../types';
 import { Buffer } from 'node:buffer';
 
+type QueuedSendData = string | Blob | ArrayBuffer | Uint8Array;
+
+/** Captures mutable buffer inputs at send() call time. */
+export function snapshotSendData(
+  data: string | Blob | ArrayBuffer | ArrayBufferView
+): QueuedSendData {
+  if (ArrayBuffer.isView(data)) {
+    return Uint8Array.from(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return data.slice(0);
+  }
+
+  return data;
+}
+
 export function getSendByteLength(data: string | Blob | ArrayBuffer | ArrayBufferView): number {
   if (typeof data === 'string') {
     return Buffer.byteLength(data);
@@ -18,12 +35,10 @@ export function getSendByteLength(data: string | Blob | ArrayBuffer | ArrayBuffe
     return data.byteLength;
   }
 
-  return 0;
+  throw new TypeError('Unsupported WebSocket message type');
 }
 
-export async function normalizeSendData(
-  data: string | Blob | ArrayBuffer | ArrayBufferView
-): Promise<
+export async function normalizeSendData(data: QueuedSendData): Promise<
   | {
       type: 'text';
       data: string;

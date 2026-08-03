@@ -86,6 +86,39 @@ describe('response behavior', () => {
     assert.strictEqual(right, JSON.stringify({ cloned: true }));
   });
 
+  test('should accept standard streaming BodyInit values in synthetic responses', async () => {
+    const blobResponse = new WreqResponse(
+      new Blob(['blob response'], { type: 'text/x-node-wreq-test' })
+    );
+
+    assert.strictEqual(blobResponse.headers.get('content-type'), 'text/x-node-wreq-test');
+    assert.deepStrictEqual([...(await blobResponse.bytes())], [...Buffer.from('blob response')]);
+
+    const streamResponse = new WreqResponse(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(Buffer.from('stream response'));
+          controller.close();
+        },
+      })
+    );
+
+    assert.strictEqual(await streamResponse.text(), 'stream response');
+  });
+
+  test('should preserve the response MIME type when reading a Blob', async () => {
+    const response = new WreqResponse('typed response', {
+      headers: {
+        'content-type': 'Text/Plain; Charset=UTF-8',
+      },
+    });
+
+    const blob = await response.blob();
+
+    assert.strictEqual(blob.type, 'text/plain; charset=utf-8');
+    assert.strictEqual(await blob.text(), 'typed response');
+  });
+
   test('should reject clone and convenience readers while the body stream is locked', async () => {
     const response = new WreqResponse('locked', {
       status: 200,

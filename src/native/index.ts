@@ -13,9 +13,11 @@ export {
 } from './request';
 
 export {
+  nativeWebSocketCancelConnect,
   nativeWebSocketClose,
   nativeWebSocketConnect,
   nativeWebSocketRead,
   nativeWebSocketSendBinary,
   nativeWebSocketSendText,
+  nativeWebSocketTerminate,
 } from './websocket';

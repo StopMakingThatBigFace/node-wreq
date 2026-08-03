@@ -23,11 +23,21 @@ import {
   toRedirectEntry,
 } from './pipeline/redirects';
 import { runRetryDelay, shouldRetryRequest } from './pipeline/retries';
-import { cancelResponseBody } from './response';
+import { cancelResponseBody, Response } from './response';
 
 /** Performs an HTTP request using the native transport pipeline. */
-export async function fetch(input: RequestInput, init?: WreqInit) {
-  return fetchWithNativeClient(input, init);
+export function fetch(
+  input: string | URL | globalThis.Request,
+  init?: globalThis.RequestInit
+): Promise<Response>;
+
+export function fetch(input: RequestInput, init?: WreqInit): Promise<Response>;
+
+export async function fetch(
+  input: RequestInput,
+  init?: WreqInit | globalThis.RequestInit
+): Promise<Response> {
+  return fetchWithNativeClient(input, init as WreqInit | undefined);
 }
 
 /** @internal Performs a request using a reusable native client owner. */
@@ -145,16 +155,23 @@ export async function fetchWithNativeClient(
 
         const rewritten = rewriteRedirectMethod(normalizeMethod(request.method), response.status);
 
-        const nextRequest = rewritten.bodyDropped
-          ? request._replace({
-              url: nextUrl,
-              method: rewritten.method,
-              body: null,
-            })
-          : request._replace({
-              url: nextUrl,
-              method: rewritten.method,
-            });
+        let nextRequest;
+
+        try {
+          nextRequest = rewritten.bodyDropped
+            ? request._replace({
+                url: nextUrl,
+                method: rewritten.method,
+                body: null,
+              })
+            : request._replace({
+                url: nextUrl,
+                method: rewritten.method,
+              });
+        } catch (error) {
+          await cancelResponseBody(response);
+          throw error;
+        }
 
         stripRedirectSensitiveHeaders(
           nextRequest.headers,

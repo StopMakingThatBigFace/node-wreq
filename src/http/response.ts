@@ -1,20 +1,19 @@
 import type {
   BodyInit,
-  HeadersInit,
   NativeResponse,
   RedirectEntry,
   RequestTimings,
   TlsPeerInfo,
   WreqResponseMeta,
 } from '../types';
-import { Blob, Buffer } from 'node:buffer';
+import { Buffer } from 'node:buffer';
 import { STATUS_CODES } from 'node:http';
 import { ReadableStream } from 'node:stream/web';
 import { TextDecoder } from 'node:util';
 import { RequestError, TimeoutError } from '../errors';
 import { Headers } from '../headers';
 import { nativeCancelBody, nativeForbidBodyRecycle, nativeReadBodyChunk } from '../native/index';
-import { cloneBytes, toBodyBytes } from './body/bytes';
+import { cloneBytes } from './body/bytes';
 import { parseResponseFormData } from './body/form-data';
 import { ResponseMeta } from './response-meta';
 
@@ -41,22 +40,6 @@ function decodeText(bytes: Uint8Array, contentType: string | null): string {
   } catch {
     return new TextDecoder('utf-8').decode(bytes);
   }
-}
-
-function toHeadersInit(headers: ResponseInit['headers'] | undefined): HeadersInit | undefined {
-  if (headers === undefined) {
-    return undefined;
-  }
-
-  if (headers instanceof Headers) {
-    return new Headers(headers);
-  }
-
-  if (typeof globalThis.Headers !== 'undefined' && headers instanceof globalThis.Headers) {
-    return new Headers(Array.from(headers.entries()));
-  }
-
-  return headers as unknown as HeadersInit;
 }
 
 function isNativeResponse(value: unknown): value is NativeResponse {
@@ -116,7 +99,7 @@ export class Response {
   /** Response headers. */
   readonly headers: Headers;
   /** Response type exposed for Fetch API compatibility. */
-  readonly type = 'basic' as const;
+  readonly type: globalThis.Response['type'];
   /** Extra transport metadata exposed by node-wreq. */
   readonly wreq: WreqResponseMeta;
   /** Internal cookie map used to build `response.wreq.cookies`. */
@@ -140,11 +123,14 @@ export class Response {
   #bodyFinalizerToken = {};
 
   constructor(body?: BodyInit | NativeResponse | null, init: ResponseInitWithUrl = {}) {
+    this.#streamSource = null;
+
     if (isNativeResponse(body)) {
       this.status = body.status;
       this.statusText = body.statusText ?? STATUS_CODES[body.status] ?? '';
       this.url = body.url;
       this.headers = new Headers(body.headers);
+      this.type = 'basic';
       this._cookies = { ...body.cookies };
       this._setCookies = [...(body.setCookies ?? [])];
       this._timings = body.timings ? { ...body.timings } : undefined;
@@ -155,24 +141,34 @@ export class Response {
       this.#bodyHandle = body.bodyHandle ?? null;
       this.#stream = null;
     } else {
-      this.status = init.status ?? 200;
-      this.statusText = init.statusText ?? STATUS_CODES[this.status] ?? '';
+      const nativeResponse = new globalThis.Response(
+        body as ConstructorParameters<typeof globalThis.Response>[0],
+        {
+          status: init.status,
+          statusText: init.statusText,
+          headers: init.headers,
+        }
+      );
+
+      this.status = nativeResponse.status;
+      this.statusText = nativeResponse.statusText;
       this.url = init.url ?? '';
-      this.headers = new Headers(toHeadersInit(init.headers));
+      this.headers = new Headers(nativeResponse.headers);
+      this.type = nativeResponse.type;
       this._cookies = {};
       this._setCookies = [];
       this._timings = undefined;
       this._redirectChain = [];
       this._tls = undefined;
       this.redirected = false;
-      this.#payloadBytes = toBodyBytes(body ?? null, 'Unsupported response body type');
+      this.#payloadBytes = null;
       this.#bodyHandle = null;
       this.#stream = null;
+      this.#streamSource = nativeResponse.body as ReadableStream<Uint8Array> | null;
     }
 
     this.ok = this.status >= 200 && this.status < 300;
     this.#bodyUsed = false;
-    this.#streamSource = null;
     this.wreq = new ResponseMeta(this);
     this.#orphanedStreamReaders = [];
 
@@ -211,8 +207,8 @@ export class Response {
   }
 
   /** Returns the response body as a readable byte stream. */
-  get body(): ReadableStream<Uint8Array> | null {
-    return this.#ensureStream();
+  get body(): globalThis.Response['body'] {
+    return this.#ensureStream() as globalThis.Response['body'];
   }
 
   /** Reads the response body as text, honoring the declared charset when possible. */
@@ -230,9 +226,16 @@ export class Response {
     return Uint8Array.from(await this.#consumeBytes()).buffer;
   }
 
+  /** Reads the response body as bytes. */
+  async bytes(): Promise<Uint8Array<ArrayBuffer>> {
+    return new Uint8Array(await this.#consumeBytes());
+  }
+
   /** Reads the response body as a `Blob`. */
   async blob(): Promise<Blob> {
-    return new Blob([await this.#consumeBytes()]);
+    return new globalThis.Blob([await this.#consumeBytes()], {
+      type: this.headers.get('content-type') ?? '',
+    });
   }
 
   /** Reads the response body as `FormData`. */

@@ -19,11 +19,16 @@ export type NativeBinding = {
   failUpload: (handle: number, message: string) => Promise<void>;
   finishUpload: (handle: number) => boolean;
   releaseClient: (clientId: number) => boolean;
-  websocketConnect: (options: NativeWebSocketConnectOptions) => Promise<NativeWebSocketConnection>;
+  websocketConnect: (options: NativeWebSocketConnectOptions) => {
+    handle: number;
+    promise: Promise<NativeWebSocketConnection>;
+  };
+  websocketCancelConnect: (handle: number) => boolean;
   websocketRead: (handle: number) => Promise<NativeWebSocketReadResult>;
   websocketSendText: (handle: number, text: string) => Promise<void>;
   websocketSendBinary: (handle: number, data: Buffer) => Promise<void>;
   websocketClose: (handle: number, code?: number, reason?: string) => Promise<void>;
+  websocketTerminate: (handle: number) => boolean;
   readBodyChunk: (
     handle: number,
     size?: number

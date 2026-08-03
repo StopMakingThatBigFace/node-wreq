@@ -146,9 +146,12 @@ export async function buildNativeRequest(
   }
 
   const multipartUpload = request._prepareMultipartUpload();
+  const bodyStreamUpload = multipartUpload ? undefined : request._prepareBodyStreamUpload();
 
   try {
-    const body = multipartUpload ? undefined : await request._getBodyBytesForDispatch();
+    const body =
+      multipartUpload || bodyStreamUpload ? undefined : await request._getBodyBytesForDispatch();
+
     const nativeOptions: NativeRequestOptions = {
       url: request.url,
       method: normalizeMethod(request.method),
@@ -157,6 +160,8 @@ export async function buildNativeRequest(
       body: body ? Buffer.from(body) : undefined,
       multipart: multipartUpload?.body,
       multipartUpload,
+      bodyStream: bodyStreamUpload?.body,
+      bodyStreamUpload,
       ...browser,
       emulationJson: serializeEmulationOptions(options),
       proxy,
@@ -190,6 +195,7 @@ export async function buildNativeRequest(
     return nativeOptions;
   } catch (error) {
     multipartUpload?.cancel(error);
+    bodyStreamUpload?.cancel(error);
     throw error;
   }
 }
