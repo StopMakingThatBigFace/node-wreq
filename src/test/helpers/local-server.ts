@@ -58,6 +58,7 @@ export function setupLocalTestServer() {
   let localServer: Server | undefined;
   let wsServer: WebSocketServer | undefined;
   const retryAttempts = new Map<string, number>();
+  const websocketMessages = new Map<string, string[]>();
   const connectionIds = new WeakMap<object, number>();
   let nextConnectionId = 1;
 
@@ -77,6 +78,11 @@ export function setupLocalTestServer() {
     wsServer.on('connection', (socket: WsPeer, request: IncomingMessage) => {
       const cookie = readCookieHeader(request);
       const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+      const captureKey = url.searchParams.get('capture');
+
+      if (captureKey) {
+        websocketMessages.set(captureKey, []);
+      }
 
       socket.send(
         JSON.stringify({
@@ -89,6 +95,10 @@ export function setupLocalTestServer() {
       );
 
       socket.on('message', (data: Buffer, isBinary: boolean) => {
+        if (captureKey) {
+          websocketMessages.get(captureKey)?.push(data.toString());
+        }
+
         if (!isBinary && data.toString() === 'close-me') {
           socket.close(1000, 'done');
 
@@ -102,6 +112,14 @@ export function setupLocalTestServer() {
     localServer = createServer((request, response) => {
       void (async () => {
         const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+
+        if (url.pathname === '/ws/messages') {
+          sendJson(response, 200, {
+            messages: websocketMessages.get(url.searchParams.get('key') ?? '') ?? [],
+          });
+
+          return;
+        }
 
         if (url.pathname === '/connection/id') {
           let connectionId = connectionIds.get(request.socket);
@@ -472,9 +490,23 @@ export function setupLocalTestServer() {
         return;
       }
 
-      wsServer?.handleUpgrade(request, socket, head, (websocketSocket: WsPeer) => {
-        wsServer?.emit('connection', websocketSocket, request);
-      });
+      const upgrade = () => {
+        if (socket.destroyed) {
+          return;
+        }
+
+        wsServer?.handleUpgrade(request, socket, head, (websocketSocket: WsPeer) => {
+          wsServer?.emit('connection', websocketSocket, request);
+        });
+      };
+
+      const upgradeDelay = Number(url.searchParams.get('upgradeDelay') ?? '0');
+
+      if (upgradeDelay > 0) {
+        setTimeout(upgrade, upgradeDelay);
+      } else {
+        upgrade();
+      }
     });
 
     await new Promise<void>((resolve) => {

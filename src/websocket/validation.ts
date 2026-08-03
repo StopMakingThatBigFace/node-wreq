@@ -1,6 +1,5 @@
 import type { HeadersInit, WebSocketInit } from '../types';
 import { Buffer } from 'node:buffer';
-import { WebSocketError } from '../errors';
 import { Headers } from '../headers';
 
 const SUBPROTOCOL_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -28,12 +27,25 @@ function appendQuery(url: URL, query: WebSocketInit['query']): void {
 }
 
 export function resolveWebSocketUrl(rawUrl: string | URL, init?: WebSocketInit): string {
-  const url = init?.baseURL ? new URL(String(rawUrl), init.baseURL) : new URL(String(rawUrl));
+  let url: URL;
+
+  try {
+    url = init?.baseURL ? new URL(String(rawUrl), init.baseURL) : new URL(String(rawUrl));
+  } catch (error) {
+    throw new DOMException(
+      error instanceof Error ? error.message : 'Invalid WebSocket URL',
+      'SyntaxError'
+    );
+  }
 
   appendQuery(url, init?.query);
 
-  if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
-    throw new WebSocketError(`Invalid WebSocket URL protocol: ${url.protocol}`);
+  if (url.protocol === 'http:') {
+    url.protocol = 'ws:';
+  } else if (url.protocol === 'https:') {
+    url.protocol = 'wss:';
+  } else if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+    throw new DOMException(`Invalid WebSocket URL protocol: ${url.protocol}`, 'SyntaxError');
   }
 
   if (url.hash) {
@@ -65,11 +77,11 @@ export function normalizeProtocols(protocols?: string | string[]): string[] {
 
   for (const value of values) {
     if (!SUBPROTOCOL_PATTERN.test(value)) {
-      throw new SyntaxError(`Invalid WebSocket subprotocol: ${value}`);
+      throw new DOMException(`Invalid WebSocket subprotocol: ${value}`, 'SyntaxError');
     }
 
     if (seen.has(value)) {
-      throw new SyntaxError(`Duplicate WebSocket subprotocol: ${value}`);
+      throw new DOMException(`Duplicate WebSocket subprotocol: ${value}`, 'SyntaxError');
     }
 
     seen.add(value);

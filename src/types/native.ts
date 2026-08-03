@@ -99,10 +99,25 @@ export interface NativeMultipartBody {
 }
 
 /** JS-side upload pump paired with a native multipart body. */
-export interface NativeMultipartUpload {
-  body: NativeMultipartBody;
+export interface NativeUploadPump {
   start(signal?: AbortSignal | null): Promise<void>;
   cancel(reason?: unknown): void;
+}
+
+/** JS-side upload pump paired with a native multipart body. */
+export interface NativeMultipartUpload extends NativeUploadPump {
+  body: NativeMultipartBody;
+}
+
+/** Raw request stream consumed by the native transport. */
+export interface NativeBodyStream {
+  uploadHandle: number;
+  length?: number;
+}
+
+/** JS-side upload pump paired with a raw native request stream. */
+export interface NativeBodyStreamUpload extends NativeUploadPump {
+  body: NativeBodyStream;
 }
 
 /** Fully normalized native request payload. */
@@ -121,6 +136,10 @@ export interface NativeRequestOptions {
   multipart?: NativeMultipartBody;
   /** Internal JS upload pump; never read by the native options converter. */
   multipartUpload?: NativeMultipartUpload;
+  /** Raw body stream consumed by the native transport. */
+  bodyStream?: NativeBodyStream;
+  /** Internal JS upload pump for `bodyStream`; never read by the native converter. */
+  bodyStreamUpload?: NativeBodyStreamUpload;
   /** Browser fingerprint profile used by the native transport. */
   browser?: BrowserProfile;
   /** Browser profile selection strategy used by the native transport. */

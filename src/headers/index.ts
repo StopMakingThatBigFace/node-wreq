@@ -37,8 +37,14 @@ export class Headers implements Iterable<HeaderTuple> {
       return;
     }
 
-    if (Array.isArray(init) || isIterable<HeaderTuple>(init)) {
-      for (const [name, value] of init as Iterable<HeaderTuple>) {
+    if (Array.isArray(init) || isIterable<readonly string[]>(init)) {
+      for (const entry of init as Iterable<readonly string[]>) {
+        if (!Array.isArray(entry) || entry.length !== 2) {
+          throw new TypeError('Each header tuple must contain exactly two items');
+        }
+
+        const [name, value] = entry;
+
         this.append(name, value);
       }
 
@@ -176,6 +182,30 @@ export class Headers implements Iterable<HeaderTuple> {
   *entries(): IterableIterator<HeaderTuple> {
     for (const entry of this.store.values()) {
       yield [entry.name, entry.values.join(', ')];
+    }
+  }
+
+  /** Iterates over header names. */
+  *keys(): IterableIterator<string> {
+    for (const [name] of this.entries()) {
+      yield name;
+    }
+  }
+
+  /** Iterates over combined header values. */
+  *values(): IterableIterator<string> {
+    for (const [, value] of this.entries()) {
+      yield value;
+    }
+  }
+
+  /** Invokes `callback` once for every normalized header entry. */
+  forEach(
+    callback: (value: string, key: string, parent: Headers) => void,
+    thisArg?: unknown
+  ): void {
+    for (const [name, value] of this.entries()) {
+      callback.call(thisArg, value, name, this);
     }
   }
 

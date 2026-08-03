@@ -8,25 +8,24 @@ use wreq::ws::message::{CloseCode, CloseFrame, Message};
 use wreq::ws::WebSocket;
 use wreq::Version;
 
-pub fn connect_websocket(options: WebSocketConnectOptions) -> Result<WebSocketConnection> {
-    runtime().block_on(make_websocket(options))
-}
-
 async fn run_websocket_task(
     mut websocket: WebSocket,
-    mut commands: tokio::sync::mpsc::UnboundedReceiver<WebSocketCommand>,
+    mut commands: tokio::sync::mpsc::Receiver<WebSocketCommand>,
     events: tokio::sync::mpsc::UnboundedSender<WebSocketReadResult>,
 ) {
-    let mut close_requested = false;
-    let mut requested_close_code = 1000;
-    let mut requested_close_reason = String::new();
-
     loop {
         tokio::select! {
             command = commands.recv() => {
                 match command {
-                    Some(WebSocketCommand::Text(text)) => {
-                        if websocket.send(Message::Text(text.into())).await.is_err() {
+                    Some(WebSocketCommand::Text { text, ack }) => {
+                        let result = websocket
+                            .send(Message::Text(text.into()))
+                            .await
+                            .map_err(|error| error.to_string());
+                        let failed = result.is_err();
+                        let _ = ack.send(result);
+
+                        if failed {
                             let _ = events.send(WebSocketReadResult::Close {
                                 code: 1006,
                                 reason: String::new(),
@@ -35,8 +34,15 @@ async fn run_websocket_task(
                             break;
                         }
                     }
-                    Some(WebSocketCommand::Binary(bytes)) => {
-                        if websocket.send(Message::Binary(bytes.into())).await.is_err() {
+                    Some(WebSocketCommand::Binary { bytes, ack }) => {
+                        let result = websocket
+                            .send(Message::Binary(bytes.into()))
+                            .await
+                            .map_err(|error| error.to_string());
+                        let failed = result.is_err();
+                        let _ = ack.send(result);
+
+                        if failed {
                             let _ = events.send(WebSocketReadResult::Close {
                                 code: 1006,
                                 reason: String::new(),
@@ -45,17 +51,23 @@ async fn run_websocket_task(
                             break;
                         }
                     }
-                    Some(WebSocketCommand::Close { code, reason }) => {
-                        close_requested = true;
-                        requested_close_code = code.unwrap_or(1000);
-                        requested_close_reason = reason.unwrap_or_default();
+                    Some(WebSocketCommand::Close { code, reason, ack }) => {
+                        let reason = reason.unwrap_or_default();
 
-                        let frame = Message::Close(Some(CloseFrame {
-                            code: CloseCode::from(requested_close_code),
-                            reason: requested_close_reason.clone().into(),
-                        }));
+                        let frame = if code.is_none() && reason.is_empty() {
+                            Message::Close(None)
+                        } else {
+                            Message::Close(Some(CloseFrame {
+                                code: CloseCode::from(code.unwrap_or(1000)),
+                                reason: reason.into(),
+                            }))
+                        };
 
-                        if websocket.send(frame).await.is_err() {
+                        let result = websocket.send(frame).await.map_err(|error| error.to_string());
+                        let failed = result.is_err();
+                        let _ = ack.send(result);
+
+                        if failed {
                             let _ = events.send(WebSocketReadResult::Close {
                                 code: 1006,
                                 reason: String::new(),
@@ -84,13 +96,7 @@ async fn run_websocket_task(
                     Some(Ok(Message::Close(frame))) => {
                         let (code, reason) = match frame {
                             Some(frame) => (u16::from(frame.code), frame.reason.to_string()),
-                            None => {
-                                if close_requested {
-                                    (requested_close_code, requested_close_reason.clone())
-                                } else {
-                                    (1005, String::new())
-                                }
-                            }
+                            None => (1005, String::new()),
                         };
 
                         let _ = events.send(WebSocketReadResult::Close {
@@ -111,17 +117,9 @@ async fn run_websocket_task(
                     }
                     None => {
                         let _ = events.send(WebSocketReadResult::Close {
-                            code: if close_requested {
-                                requested_close_code
-                            } else {
-                                1006
-                            },
-                            reason: if close_requested {
-                                requested_close_reason.clone()
-                            } else {
-                                String::new()
-                            },
-                            was_clean: close_requested,
+                            code: 1006,
+                            reason: String::new(),
+                            was_clean: false,
                         });
                         break;
                     }
@@ -131,7 +129,9 @@ async fn run_websocket_task(
     }
 }
 
-async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketConnection> {
+pub(crate) async fn make_websocket(
+    options: WebSocketConnectOptions,
+) -> Result<WebSocketConnection> {
     let client = websocket_client(&options).await?;
     let WebSocketConnectOptions {
         client_id: _,
@@ -232,7 +232,7 @@ async fn make_websocket(options: WebSocketConnectOptions) -> Result<WebSocketCon
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
 
-    let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (command_tx, command_rx) = tokio::sync::mpsc::channel(1);
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     runtime().spawn(run_websocket_task(websocket, command_rx, event_tx));
     let handle = insert_websocket(command_tx, event_rx);

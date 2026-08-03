@@ -8,4 +8,4 @@ pub mod types;
 mod websocket;
 
 pub use request::make_request;
-pub use websocket::connect_websocket;
+pub(crate) use websocket::make_websocket;

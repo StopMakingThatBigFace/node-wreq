@@ -1,21 +1,35 @@
 use crate::napi::convert::{js_object_to_websocket_options, websocket_to_js_object};
+use crate::store::runtime::runtime;
+use crate::store::websocket_connect_store::{
+    cancel_websocket_connect, insert_websocket_connect, remove_websocket_connect,
+};
 use crate::store::websocket_store::{
     close_websocket, read_websocket_message, send_websocket_binary, send_websocket_text,
+    terminate_websocket,
 };
-use crate::transport::{connect_websocket, types::WebSocketReadResult};
+use crate::transport::{make_websocket, types::WebSocketReadResult};
 use neon::prelude::*;
 use neon::types::buffer::TypedArray;
 use neon::types::JsBuffer;
 
-fn websocket_connect_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+fn websocket_connect_js(mut cx: FunctionContext) -> JsResult<JsObject> {
     let options_obj = cx.argument::<JsObject>(0)?;
     let options = js_object_to_websocket_options(&mut cx, options_obj)?;
 
     let channel = cx.channel();
     let (deferred, promise) = cx.promise();
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let handle = insert_websocket_connect(cancel_tx);
 
     std::thread::spawn(move || {
-        let result = connect_websocket(options);
+        let result = runtime().block_on(async move {
+            tokio::select! {
+                result = make_websocket(options) => result,
+                _ = cancel_rx => Err(anyhow::anyhow!("WebSocket connection aborted")),
+            }
+        });
+
+        remove_websocket_connect(handle);
 
         deferred.settle_with(&channel, move |mut cx| match result {
             Ok(websocket) => websocket_to_js_object(&mut cx, websocket),
@@ -23,7 +37,19 @@ fn websocket_connect_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
         });
     });
 
-    Ok(promise)
+    let result = JsObject::new(&mut cx);
+    let handle_value = cx.number(handle as f64);
+
+    result.set(&mut cx, "handle", handle_value)?;
+    result.set(&mut cx, "promise", promise)?;
+
+    Ok(result)
+}
+
+fn websocket_cancel_connect_js(mut cx: FunctionContext) -> JsResult<JsBoolean> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+
+    Ok(cx.boolean(cancel_websocket_connect(handle)))
 }
 
 fn websocket_read_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
@@ -140,11 +166,19 @@ fn websocket_close_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
     Ok(promise)
 }
 
+fn websocket_terminate_js(mut cx: FunctionContext) -> JsResult<JsBoolean> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+
+    Ok(cx.boolean(terminate_websocket(handle)))
+}
+
 pub fn register(cx: &mut ModuleContext) -> NeonResult<()> {
     cx.export_function("websocketConnect", websocket_connect_js)?;
+    cx.export_function("websocketCancelConnect", websocket_cancel_connect_js)?;
     cx.export_function("websocketRead", websocket_read_js)?;
     cx.export_function("websocketSendText", websocket_send_text_js)?;
     cx.export_function("websocketSendBinary", websocket_send_binary_js)?;
     cx.export_function("websocketClose", websocket_close_js)?;
+    cx.export_function("websocketTerminate", websocket_terminate_js)?;
     Ok(())
 }

@@ -7,32 +7,39 @@ export async function nativeRequest(
   options: NativeRequestOptions,
   signal?: AbortSignal | null
 ): Promise<NativeResponse> {
+  const upload = options.multipartUpload ?? options.bodyStreamUpload;
+
   if (signal?.aborted) {
-    options.multipartUpload?.cancel(signal.reason);
+    upload?.cancel(signal.reason);
     throw new AbortError(undefined, { cause: signal.reason });
   }
 
-  const { multipartUpload, ...nativeOptions } = options;
+  const {
+    multipartUpload: _multipartUpload,
+    bodyStreamUpload: _bodyStreamUpload,
+    ...nativeOptions
+  } = options;
+
   let task: ReturnType<ReturnType<typeof getBinding>['request']>;
 
   try {
     task = getBinding().request(nativeOptions);
   } catch (error) {
-    multipartUpload?.cancel(error);
+    upload?.cancel(error);
     throw error;
   }
 
-  if (multipartUpload) {
+  if (upload) {
     // Upload errors are forwarded through the native body stream so the request
     // retains the original failure instead of being replaced with a generic abort.
-    void multipartUpload.start(signal).catch(() => undefined);
+    void upload.start(signal).catch(() => undefined);
   }
 
   if (!signal) {
     try {
       return await task.promise;
     } finally {
-      multipartUpload?.cancel();
+      upload?.cancel();
     }
   }
 
@@ -50,7 +57,7 @@ export async function nativeRequest(
 
       settled = true;
       cleanup();
-      multipartUpload?.cancel(signal.reason);
+      upload?.cancel(signal.reason);
       getBinding().cancelRequest(task.handle);
       reject(new AbortError(undefined, { cause: signal.reason }));
     };
@@ -65,7 +72,7 @@ export async function nativeRequest(
 
         settled = true;
         cleanup();
-        multipartUpload?.cancel();
+        upload?.cancel();
         resolve(response);
       },
       (error) => {
@@ -75,7 +82,7 @@ export async function nativeRequest(
 
         settled = true;
         cleanup();
-        multipartUpload?.cancel(error);
+        upload?.cancel(error);
         reject(error);
       }
     );

@@ -77,6 +77,10 @@ pub enum ConnectionGroup {
 #[derive(Debug)]
 pub enum RequestBody {
     Bytes(Vec<u8>),
+    Stream {
+        receiver: UploadReceiver,
+        length: Option<u64>,
+    },
     Multipart(MultipartBodyOptions),
 }
 

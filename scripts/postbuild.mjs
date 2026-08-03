@@ -11,6 +11,7 @@ const runtimeExports = [
   'getProfiles',
   'BROWSER_PROFILES',
   'Headers',
+  'Request',
   'Response',
   'RequestError',
   'HTTPError',

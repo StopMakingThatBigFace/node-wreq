@@ -1,5 +1,4 @@
 import type { RequestInput, WreqInit } from '../../types';
-import { Buffer } from 'node:buffer';
 import { RequestError } from '../../errors';
 import { Request } from '../request';
 
@@ -19,6 +18,15 @@ export async function mergeInputAndInit(
       throw new TypeError('Request body is already used');
     }
 
+    if (
+      input instanceof Request &&
+      init?.body === undefined &&
+      input.body !== null &&
+      ['GET', 'HEAD'].includes((init?.method ?? input.method).toUpperCase())
+    ) {
+      throw new TypeError('Request with GET/HEAD method cannot have body.');
+    }
+
     return {
       urlInput: input instanceof Request ? input.url : input,
       init:
@@ -28,7 +36,7 @@ export async function mergeInputAndInit(
               method: init?.method ?? input.method,
               headers: init?.headers ?? input.headers,
               signal: init?.signal ?? input.signal ?? undefined,
-              body: init?.body !== undefined ? init.body : (input._cloneBodyInit() ?? undefined),
+              body: init?.body !== undefined ? init.body : (input._takeBodyInit() ?? undefined),
               multipartBoundary:
                 init?.multipartBoundary ??
                 (init?.body === undefined ? input._getMultipartBoundary() : undefined),
@@ -45,7 +53,11 @@ export async function mergeInputAndInit(
     let body = init?.body;
 
     if (body === undefined && input.body !== null) {
-      body = Buffer.from(await input.arrayBuffer());
+      const transferred = new globalThis.Request(input, {
+        method: init?.method ?? input.method,
+      });
+
+      body = transferred.body as ReadableStream<Uint8Array>;
     }
 
     return {
