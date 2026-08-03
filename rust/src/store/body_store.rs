@@ -96,3 +96,55 @@ pub fn forbid_body_recycle(handle: u64) -> Result<bool> {
 
     Ok(true)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    #[test]
+    fn removes_body_after_a_truncated_response_errors() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let address = listener.local_addr().expect("read test server address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test connection");
+            let mut request = [0_u8; 4096];
+            let _ = stream.read(&mut request).expect("read test request");
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 1024\r\nConnection: close\r\n\r\npartial",
+                )
+                .expect("write truncated response");
+            stream.flush().expect("flush truncated response");
+            thread::sleep(std::time::Duration::from_millis(50));
+        });
+
+        let response = runtime()
+            .block_on(wreq::get(format!("http://{address}/")).send())
+            .expect("receive response headers");
+        let handle = store_body(response);
+        let mut read_error = None;
+
+        for _ in 0..3 {
+            match read_body_chunk(handle, 65_536) {
+                Ok((_, done)) => assert!(!done, "truncated response unexpectedly completed"),
+                Err(error) => {
+                    read_error = Some(error);
+                    break;
+                }
+            }
+        }
+
+        server.join().expect("join test server");
+        assert!(
+            read_error.is_some(),
+            "truncated response did not report an error"
+        );
+        assert!(
+            get_body(handle).is_err(),
+            "failed response remained reachable in BODY_STORE"
+        );
+    }
+}

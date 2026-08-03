@@ -80,33 +80,72 @@ pub fn read_websocket_message(handle: u64) -> Result<WebSocketReadResult> {
             .ok_or_else(|| anyhow::anyhow!("WebSocket event stream is closed"))
     });
 
-    if matches!(result, Ok(WebSocketReadResult::Close { .. })) {
+    if result.is_err() || matches!(result, Ok(WebSocketReadResult::Close { .. })) {
         remove_websocket(handle);
     }
 
     result
 }
 
-pub fn send_websocket_text(handle: u64, text: String) -> Result<()> {
+fn send_websocket_command(handle: u64, command: WebSocketCommand) -> Result<()> {
     let websocket = get_websocket(handle)?;
-    websocket
-        .commands
-        .send(WebSocketCommand::Text(text))
-        .map_err(|_| anyhow::anyhow!("WebSocket is already closed"))
+
+    if websocket.commands.send(command).is_err() {
+        remove_websocket(handle);
+        anyhow::bail!("WebSocket is already closed");
+    }
+
+    Ok(())
+}
+
+pub fn send_websocket_text(handle: u64, text: String) -> Result<()> {
+    send_websocket_command(handle, WebSocketCommand::Text(text))
 }
 
 pub fn send_websocket_binary(handle: u64, bytes: Vec<u8>) -> Result<()> {
-    let websocket = get_websocket(handle)?;
-    websocket
-        .commands
-        .send(WebSocketCommand::Binary(bytes))
-        .map_err(|_| anyhow::anyhow!("WebSocket is already closed"))
+    send_websocket_command(handle, WebSocketCommand::Binary(bytes))
 }
 
 pub fn close_websocket(handle: u64, code: Option<u16>, reason: Option<String>) -> Result<()> {
-    let websocket = get_websocket(handle)?;
-    websocket
-        .commands
-        .send(WebSocketCommand::Close { code, reason })
-        .map_err(|_| anyhow::anyhow!("WebSocket is already closed"))
+    send_websocket_command(handle, WebSocketCommand::Close { code, reason })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removes_websocket_when_event_stream_closes() {
+        let (commands, _command_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (event_sender, events) = tokio::sync::mpsc::unbounded_channel();
+        let handle = insert_websocket(commands, events);
+
+        drop(event_sender);
+
+        let error = read_websocket_message(handle).expect_err("closed event stream should fail");
+
+        assert!(error.to_string().contains("event stream is closed"));
+        assert!(
+            get_websocket(handle).is_err(),
+            "closed WebSocket remained reachable in WEBSOCKET_STORE"
+        );
+    }
+
+    #[test]
+    fn removes_websocket_when_command_stream_closes() {
+        let (commands, command_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (_event_sender, events) = tokio::sync::mpsc::unbounded_channel();
+        let handle = insert_websocket(commands, events);
+
+        drop(command_receiver);
+
+        let error = send_websocket_text(handle, "test".to_owned())
+            .expect_err("closed command stream should fail");
+
+        assert!(error.to_string().contains("already closed"));
+        assert!(
+            get_websocket(handle).is_err(),
+            "closed WebSocket remained reachable in WEBSOCKET_STORE"
+        );
+    }
 }

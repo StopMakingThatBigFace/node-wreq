@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { describe, test } from 'node:test';
-import { fetch } from '../node-wreq';
+import { createClient, fetch } from '../node-wreq';
 import { setupLocalTestServer } from './helpers/local-server';
 
 describe('cookies and redirects', () => {
@@ -132,6 +132,24 @@ describe('cookies and redirects', () => {
       'active',
       'beforeRedirect should be able to mutate next request'
     );
+  });
+
+  test('should release intermediate response bodies before following redirects', async () => {
+    const client = createClient({
+      baseURL: getBaseUrl(),
+      poolMaxSize: 1,
+      timeout: 1_000,
+    });
+
+    try {
+      const response = await client.get('/redirect/start');
+
+      assert.strictEqual(response.status, 200);
+      assert.strictEqual(response.redirected, true);
+      assert.strictEqual((await response.json<{ method: string }>()).method, 'GET');
+    } finally {
+      client.close();
+    }
   });
 
   test('should rewrite POST to GET on 302 redirects', async () => {

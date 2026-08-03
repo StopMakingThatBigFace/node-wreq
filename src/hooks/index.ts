@@ -1,4 +1,3 @@
-import type { Response } from '../http/response';
 import type {
   AfterResponseContext,
   BeforeErrorContext,
@@ -8,6 +7,7 @@ import type {
   Hooks,
   InitContext,
 } from '../types';
+import { cancelResponseBody, type Response } from '../http/response';
 
 export function mergeHooks(base?: Hooks, override?: Hooks): Hooks | undefined {
   if (!base && !override) {
@@ -52,9 +52,17 @@ export async function runAfterResponseHooks(
   let current = context.response;
 
   for (const hook of hooks?.afterResponse ?? []) {
-    const result = await hook({ ...context, response: current });
+    let result: Response | void;
 
-    if (result) {
+    try {
+      result = await hook({ ...context, response: current });
+    } catch (error) {
+      await cancelResponseBody(current);
+      throw error;
+    }
+
+    if (result && result !== current) {
+      await cancelResponseBody(current);
       current = result;
     }
   }

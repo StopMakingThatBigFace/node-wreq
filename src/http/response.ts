@@ -84,6 +84,14 @@ function toBodyReadError(error: unknown): RequestError {
   return new RequestError(message, { cause: error });
 }
 
+const bodyFinalizer = new FinalizationRegistry<number>((handle) => {
+  try {
+    nativeCancelBody(handle);
+  } catch {
+    // Native bindings may already be unavailable during process shutdown.
+  }
+});
+
 function cloneTlsInfo(value: TlsPeerInfo | undefined): TlsPeerInfo | undefined {
   if (!value) {
     return undefined;
@@ -129,6 +137,7 @@ export class Response {
   #streamSource: ReadableStream<Uint8Array> | null;
   #stream: ReadableStream<Uint8Array> | null;
   #orphanedStreamReaders: ReadableStreamDefaultReader<Uint8Array>[];
+  #bodyFinalizerToken = {};
 
   constructor(body?: BodyInit | NativeResponse | null, init: ResponseInitWithUrl = {}) {
     if (isNativeResponse(body)) {
@@ -166,6 +175,10 @@ export class Response {
     this.#streamSource = null;
     this.wreq = new ResponseMeta(this);
     this.#orphanedStreamReaders = [];
+
+    if (this.#bodyHandle !== null) {
+      bodyFinalizer.register(this, this.#bodyHandle, this.#bodyFinalizerToken);
+    }
   }
 
   /** Indicates whether the response body has already been consumed. */
@@ -307,15 +320,14 @@ export class Response {
     }
 
     const handle = this.#bodyHandle;
-
-    this.#bodyHandle = null;
-    this.#streamSource = new ReadableStream<Uint8Array>({
+    const streamSource = new ReadableStream<Uint8Array>({
       pull: async (controller) => {
         let result;
 
         try {
           result = await nativeReadBodyChunk(handle);
         } catch (error) {
+          bodyFinalizer.unregister(this.#bodyFinalizerToken);
           this.#markBodyComplete();
           throw toBodyReadError(error);
         }
@@ -325,13 +337,20 @@ export class Response {
         }
 
         if (result.done) {
+          bodyFinalizer.unregister(this.#bodyFinalizerToken);
           controller.close();
         }
       },
       cancel: async () => {
+        bodyFinalizer.unregister(this.#bodyFinalizerToken);
         nativeCancelBody(handle);
       },
     });
+
+    this.#bodyHandle = null;
+    bodyFinalizer.unregister(this.#bodyFinalizerToken);
+    this.#streamSource = streamSource;
+    bodyFinalizer.register(streamSource, handle, this.#bodyFinalizerToken);
 
     return this.#streamSource;
   }
@@ -434,5 +453,18 @@ export class Response {
     const bytes = this.#payloadBytes;
 
     return bytes === null ? new Uint8Array() : new Uint8Array(bytes);
+  }
+}
+
+/** @internal Releases a response body that the request pipeline will not return. */
+export async function cancelResponseBody(response: Response | undefined): Promise<void> {
+  if (!response) {
+    return;
+  }
+
+  try {
+    await response.body?.cancel();
+  } catch {
+    // A hook may have locked the stream; its reader remains responsible for cancellation.
   }
 }

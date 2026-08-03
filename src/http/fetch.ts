@@ -23,6 +23,7 @@ import {
   toRedirectEntry,
 } from './pipeline/redirects';
 import { runRetryDelay, shouldRetryRequest } from './pipeline/retries';
+import { cancelResponseBody } from './response';
 
 /** Performs an HTTP request using the native transport pipeline. */
 export async function fetch(input: RequestInput, init?: WreqInit) {
@@ -180,6 +181,8 @@ export async function fetchWithNativeClient(
           redirectChain: [...redirectChain, redirectEntry],
         });
 
+        await cancelResponseBody(response);
+
         redirectChain.push({
           ...redirectEntry,
           toUrl: nextRequest.url,
@@ -220,6 +223,7 @@ export async function fetchWithNativeClient(
           response,
         });
 
+        await cancelResponseBody(response);
         await runRetryDelay({ ...retryContext, error: retryError }, options.retry);
         attempt = nextAttempt;
         continue;
@@ -272,6 +276,7 @@ export async function fetchWithNativeClient(
           response: normalizedError.response,
         });
 
+        await cancelResponseBody(normalizedError.response);
         await runRetryDelay(retryContext, options.retry);
         attempt = nextAttempt;
         continue;

@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { describe, test } from 'node:test';
-import { Response as WreqResponse, fetch } from '../node-wreq';
+import { Response as WreqResponse, createClient, fetch } from '../node-wreq';
 import { setupLocalTestServer } from './helpers/local-server';
 
 describe('hooks and retries', () => {
@@ -86,6 +86,38 @@ describe('hooks and retries', () => {
     assert.strictEqual(body.replaced, true, 'Replaced response body should be returned');
   });
 
+  test('should release a native response replaced by an afterResponse hook', async () => {
+    const client = createClient({
+      baseURL: getBaseUrl(),
+      poolMaxSize: 1,
+      timeout: 1_000,
+    });
+
+    try {
+      const replaced = await client.get('/status/201', {
+        hooks: {
+          afterResponse: [
+            () =>
+              new WreqResponse('replacement', {
+                status: 200,
+                url: 'https://local/replacement',
+              }),
+          ],
+        },
+      });
+
+      assert.strictEqual(await replaced.text(), 'replacement');
+
+      const next = await client.get('/get');
+
+      assert.strictEqual(next.status, 200);
+
+      await next.body?.cancel();
+    } finally {
+      client.close();
+    }
+  });
+
   test('should allow beforeError to rewrite thrown errors', async () => {
     await assert.rejects(
       async () => {
@@ -141,6 +173,33 @@ describe('hooks and retries', () => {
 
     assert.strictEqual(body.attempt, 3, 'third attempt should be the successful response');
     assert.strictEqual(body.retried, true, 'server should observe retries');
+  });
+
+  test('should release failed response bodies before retrying', async () => {
+    const key = 'status-retry-single-connection';
+    const client = createClient({
+      baseURL: getBaseUrl(),
+      poolMaxSize: 1,
+      timeout: 1_000,
+      retry: {
+        limit: 1,
+        backoff: () => 0,
+      },
+    });
+
+    retryAttempts.set(key, 0);
+
+    try {
+      const response = await client.get(`/retry?key=${key}&failCount=1`);
+
+      assert.strictEqual(response.status, 200);
+      assert.deepStrictEqual(await response.json(), {
+        attempt: 2,
+        retried: true,
+      });
+    } finally {
+      client.close();
+    }
   });
 
   test('should allow shouldRetry to veto a retryable response', async () => {

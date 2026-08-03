@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { Buffer } from 'node:buffer';
 import { describe, test } from 'node:test';
-import { fetch, Request } from '../node-wreq';
+import { createClient, fetch, Request } from '../node-wreq';
 import { setupLocalTestServer } from './helpers/local-server';
 import { setupProxyTestServer } from './helpers/proxy-server';
 
@@ -321,6 +321,34 @@ describe('transport features', () => {
       },
       (error: unknown) => error instanceof Error && error.name === 'TimeoutError'
     );
+  });
+
+  test('should release a timed-out response body from a single-connection pool', async () => {
+    const client = createClient({
+      baseURL: getBaseUrl(),
+      poolMaxSize: 1,
+      timeout: 1_000,
+    });
+
+    try {
+      const response = await client.get('/stream/slow?chunks=3&chunkBytes=1024&delayMs=300', {
+        timeout: 0,
+        readTimeout: 100,
+      });
+
+      await assert.rejects(
+        response.arrayBuffer(),
+        (error: unknown) => error instanceof Error && error.name === 'TimeoutError'
+      );
+
+      const next = await client.get('/get');
+
+      assert.strictEqual(next.status, 200);
+
+      await next.body?.cancel();
+    } finally {
+      client.close();
+    }
   });
 
   test('should support per-request DNS host overrides', async () => {
