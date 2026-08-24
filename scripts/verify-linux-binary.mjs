@@ -21,6 +21,8 @@ const abiLimits = new Map([
 ]);
 
 const allowedLibraries = new Set([
+  'ld-linux-aarch64.so.1',
+  'ld-linux-x86-64.so.2',
   'libatomic.so.1',
   'libc.so.6',
   'libdl.so.2',
