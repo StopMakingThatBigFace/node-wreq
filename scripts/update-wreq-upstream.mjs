@@ -30,10 +30,10 @@ async function fetchLatestVersion(crate) {
   }
 
   const payload = await response.json();
-  const latestVersion = payload?.crate?.max_version;
+  const latestVersion = payload?.crate?.max_stable_version;
 
   if (typeof latestVersion !== 'string' || latestVersion.length === 0) {
-    throw new Error(`crates.io did not return max_version for ${crate}`);
+    throw new Error(`crates.io did not return max_stable_version for ${crate}`);
   }
 
   return latestVersion;

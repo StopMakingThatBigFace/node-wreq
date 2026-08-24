@@ -24,6 +24,18 @@ export function normalizeProxyOptions(proxy: WreqInit['proxy']): {
   };
 }
 
+export function normalizeTcpLinger(value?: number): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new TypeError('tcpLinger must be a finite non-negative number');
+  }
+
+  return value === 0 ? 0 : Math.max(1, Math.ceil(value));
+}
+
 export function normalizeDnsOptions(dns?: DnsOptions): NativeDnsOptions | undefined {
   if (!dns) {
     return undefined;

@@ -10,6 +10,7 @@ import {
   normalizeDnsOptions,
   normalizeLocalBindOptions,
   normalizeProxyOptions,
+  normalizeTcpLinger,
 } from '../../config/network';
 import {
   normalizeCertificateAuthority,
@@ -170,6 +171,7 @@ export async function buildNativeRequest(
       ...timeout,
       ...readTimeout,
       ...connectTimeout,
+      tcpLinger: normalizeTcpLinger(options.tcpLinger),
       poolIdleTimeout: options.poolIdleTimeout,
       poolMaxIdlePerHost: options.poolMaxIdlePerHost,
       poolMaxSize: options.poolMaxSize,

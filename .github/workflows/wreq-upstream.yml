@@ -63,7 +63,7 @@ jobs:
           body: |
             Automated upstream bump for the Rust crates.
 
-            This workflow checks `crates.io` for the latest published `max_version` of:
+            This workflow checks `crates.io` for the latest published stable version of:
             - `wreq`
             - `wreq-util`
           labels: |

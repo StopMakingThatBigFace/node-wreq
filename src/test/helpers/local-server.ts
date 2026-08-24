@@ -383,9 +383,27 @@ export function setupLocalTestServer() {
         }
 
         if (url.pathname === '/redirect/start') {
-          response.writeHead(302, {
-            location: '/redirect/final',
+          const headers: Record<string, string> = {
+            location: url.searchParams.get('target') ?? '/redirect/final',
             'set-cookie': 'redirect_session=1; Path=/',
+          };
+
+          const referrerPolicy = url.searchParams.get('referrerPolicy');
+
+          if (referrerPolicy) {
+            headers['referrer-policy'] = referrerPolicy;
+          }
+
+          response.writeHead(302, headers);
+
+          response.end();
+
+          return;
+        }
+
+        if (url.pathname === '/redirect/multiple-choices') {
+          response.writeHead(300, {
+            location: '/redirect/final',
           });
 
           response.end();
@@ -462,6 +480,9 @@ export function setupLocalTestServer() {
             method: request.method,
             cookie: readCookieHeader(request),
             hookHeader: request.headers['x-redirect-hook'] ?? '',
+            authorization: request.headers.authorization ?? '',
+            proxyAuthorization: request.headers['proxy-authorization'] ?? '',
+            referrer: request.headers.referer ?? '',
           });
 
           return;

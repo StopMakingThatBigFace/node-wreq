@@ -15,6 +15,8 @@ import { isResponseStatusAllowed, normalizeRequestError, throwIfAborted } from '
 import { mergeInputAndInit } from './pipeline/input';
 import { buildNativeRequest, createRequest, resolveOptions } from './pipeline/options';
 import {
+  applyRedirectReferrerPolicy,
+  DEFAULT_REDIRECT_REFERRER_POLICY,
   finalizeResponse,
   isRedirectResponse,
   resolveRedirectLocation,
@@ -59,6 +61,7 @@ export async function fetchWithNativeClient(
   let request = createRequest(merged.urlInput, options);
   const redirectChain: RedirectEntry[] = [];
   const visitedRedirectTargets = new Set<string>([request.url]);
+  let referrerPolicy = DEFAULT_REDIRECT_REFERRER_POLICY;
   let attempt = 1;
 
   while (true) {
@@ -178,6 +181,13 @@ export async function fetchWithNativeClient(
           request.url,
           nextUrl,
           rewritten.bodyDropped
+        );
+
+        referrerPolicy = applyRedirectReferrerPolicy(
+          nextRequest.headers,
+          response,
+          nextUrl,
+          referrerPolicy
         );
 
         if (options.cookieJar) {

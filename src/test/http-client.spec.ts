@@ -114,6 +114,20 @@ describe('http client', () => {
     assert.deepStrictEqual(await response.json(), { delayed: true });
   });
 
+  test('should expose DNS failures with a stable error code', async () => {
+    await assert.rejects(
+      fetch('http://node-wreq-dns-error.invalid/', {
+        proxy: false,
+        timeout: 5_000,
+      }),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.name === 'RequestError' &&
+        'code' in error &&
+        error.code === 'ERR_DNS'
+    );
+  });
+
   test('should abort requests after dispatch has started', async () => {
     const controller = new AbortController();
     const responsePromise = fetch(`${getBaseUrl()}/timings/delay?ms=250`, {
@@ -312,6 +326,22 @@ describe('http client', () => {
     );
   });
 
+  test('should configure and validate TCP linger', async () => {
+    const response = await fetch(`${getBaseUrl()}/headers/raw`, {
+      tcpLinger: 0,
+    });
+
+    assert.strictEqual(response.status, 200);
+
+    await assert.rejects(
+      fetch(`${getBaseUrl()}/headers/raw`, {
+        tcpLinger: Number.NaN,
+      }),
+      (error: unknown) =>
+        error instanceof Error && error.message.includes('tcpLinger must be a finite non-negative')
+    );
+  });
+
   test('should support fetch-style requests', async () => {
     const response = await fetch(`${getBaseUrl()}/get`, {
       browser: 'chrome_137',
@@ -498,7 +528,7 @@ describe('http client', () => {
           experimentalSettings: [{ id: 10, value: 1 }],
         },
       }),
-      /wreq 6\.0\.0-rc\.29 no longer exposes custom HTTP\/2 settings/
+      /wreq no longer exposes custom HTTP\/2 settings/
     );
   });
 

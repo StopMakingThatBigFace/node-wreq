@@ -6,6 +6,7 @@ on:
       - '.github/workflows/test.yml'
       - 'package.json'
       - 'package-lock.json'
+      - 'rust-toolchain.toml'
       - 'tsconfig.json'
       - 'src/**'
       - 'rust/**'
@@ -15,6 +16,7 @@ on:
       - '.github/workflows/test.yml'
       - 'package.json'
       - 'package-lock.json'
+      - 'rust-toolchain.toml'
       - 'tsconfig.json'
       - 'src/**'
       - 'rust/**'
@@ -43,37 +45,17 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v6
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            rust/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          toolchain: 1.98.0
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+          shared-key: test-${{ matrix.os }}
 
       - name: Install dependencies
-        run: npm install
-
-      - name: Build Rust module
-        run: npm run build:rust
-
-      - name: Debug - List built files
-        shell: bash
-        run: |
-          echo "=== Files in rust/ ==="
-          ls -la rust/*.node || echo "No .node files in rust/"
-          echo ""
-          echo "=== Node platform info ==="
-          node -e "console.log('Platform:', process.platform, 'Arch:', process.arch)"
-
-      - name: Build TypeScript
-        run: npm run build:ts
+        run: npm ci --ignore-scripts
 
       - name: Run tests
         run: npm test
@@ -93,12 +75,19 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci --ignore-scripts
 
       - name: Install Rust linting components
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.98.0
           components: rustfmt, clippy
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+          shared-key: lint
 
       - name: Check TypeScript types
         run: npx tsc --noEmit

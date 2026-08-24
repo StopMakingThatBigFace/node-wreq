@@ -27,3 +27,26 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 1
+    labels:
+      - dependencies
+    groups:
+      github-actions-major:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - major
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch

@@ -1,4 +1,5 @@
 use crate::napi::convert::{js_object_to_websocket_options, websocket_to_js_object};
+use crate::napi::error::throw_anyhow_error;
 use crate::store::runtime::runtime;
 use crate::store::websocket_connect_store::{
     cancel_websocket_connect, insert_websocket_connect, remove_websocket_connect,
@@ -33,7 +34,7 @@ fn websocket_connect_js(mut cx: FunctionContext) -> JsResult<JsObject> {
 
         deferred.settle_with(&channel, move |mut cx| match result {
             Ok(websocket) => websocket_to_js_object(&mut cx, websocket),
-            Err(error) => cx.throw_error(format!("{:#}", error)),
+            Err(error) => throw_anyhow_error(&mut cx, error),
         });
     });
 

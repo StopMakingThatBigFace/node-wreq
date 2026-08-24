@@ -33,6 +33,8 @@ export interface WebSocketInit {
   dns?: DnsOptions;
   /** Handshake timeout in milliseconds. */
   timeout?: number;
+  /** Socket linger duration in milliseconds; zero requests an abortive close. */
+  tcpLinger?: number;
   /** Maximum idle time for pooled connections, or `false` to disable idle expiry. */
   poolIdleTimeout?: number | false;
   /** Maximum idle pooled connections retained per origin. */
@@ -117,6 +119,8 @@ export interface NativeWebSocketConnectOptions {
   dns?: import('./native').NativeDnsOptions;
   /** Handshake timeout in milliseconds. */
   timeout?: number;
+  /** Socket linger duration in milliseconds; zero requests an abortive close. */
+  tcpLinger?: number;
   /** Maximum idle time for pooled connections, or `false` to disable idle expiry. */
   poolIdleTimeout?: number | false;
   /** Maximum idle pooled connections retained per origin. */

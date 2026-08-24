@@ -565,7 +565,6 @@ Useful redirect facts:
 - `301` / `302` rewrite `POST` to `GET`
 - `303` rewrites to `GET` unless current method is `HEAD`
 - `307` / `308` preserve method and body
-- `authorization` is stripped on cross-origin redirect
 
 ### simple retries
 
@@ -661,6 +660,7 @@ Main error classes:
 - `TimeoutError`
 - `AbortError`
 - `WebSocketError`
+- `ERR_DNS`
 
 Typical patterns:
 
@@ -875,6 +875,7 @@ const client = createClient({
   poolMaxIdlePerHost: 8,
   poolMaxSize: 128,
   tlsSessionCacheCapacity: 8,
+  tcpLinger: 5_000,
 });
 
 await client.get('/account', {
@@ -894,7 +895,8 @@ client.close();
 ```
 
 Set `poolIdleTimeout: false` to disable idle expiry. `connectionGroup` accepts a string or a
-non-negative integer.
+non-negative integer. `tcpLinger` configures `SO_LINGER` in milliseconds; `0` requests an abortive
+close with TCP `RST`, while omitting the option keeps the operating-system default.
 
 ### mTLS and custom CAs
 

@@ -3,6 +3,18 @@ import { Headers } from '../../headers';
 import { Request } from '../request';
 import { Response } from '../response';
 
+export function toCookieOriginUrl(url: string): string {
+  const cookieUrl = new URL(url);
+
+  if (cookieUrl.protocol === 'ws:') {
+    cookieUrl.protocol = 'http:';
+  } else if (cookieUrl.protocol === 'wss:') {
+    cookieUrl.protocol = 'https:';
+  }
+
+  return cookieUrl.href;
+}
+
 export async function loadCookiesIntoRequest(
   cookieJar: CookieJar | undefined,
   request: Request
@@ -32,7 +44,7 @@ export async function loadCookiesIntoHeaders(
     return;
   }
 
-  const cookies = await cookieJar.getCookies(url);
+  const cookies = await cookieJar.getCookies(toCookieOriginUrl(url));
 
   if (cookies.length === 0) {
     return;

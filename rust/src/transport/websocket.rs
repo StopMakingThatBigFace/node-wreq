@@ -144,6 +144,7 @@ pub(crate) async fn make_websocket(
         disable_system_proxy: _,
         dns: _,
         timeout: _,
+        tcp_linger: _,
         pool_idle_timeout: _,
         pool_max_idle_per_host: _,
         pool_max_size: _,

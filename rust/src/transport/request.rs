@@ -63,6 +63,7 @@ pub async fn make_request(options: RequestOptions) -> Result<Response> {
         timeout,
         read_timeout,
         connect_timeout: _,
+        tcp_linger: _,
         pool_idle_timeout: _,
         pool_max_idle_per_host: _,
         pool_max_size: _,

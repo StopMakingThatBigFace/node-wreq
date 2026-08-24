@@ -276,7 +276,7 @@ pub fn apply_http2_options(
     if let Some(experimental_settings) = options.experimental_settings {
         if !experimental_settings.is_empty() {
             bail!(
-                "Unsupported emulation http2Options.experimentalSettings: wreq 6.0.0-rc.29 no longer exposes custom HTTP/2 settings"
+                "Unsupported emulation http2Options.experimentalSettings: wreq no longer exposes custom HTTP/2 settings"
             );
         }
     }

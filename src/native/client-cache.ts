@@ -16,6 +16,7 @@ export function createNativeClientCacheKey(options: NativeClientOptions): string
     dns: options.dns,
     timeout: 'protocols' in options ? options.timeout : undefined,
     connectTimeout: 'connectTimeout' in options ? options.connectTimeout : undefined,
+    tcpLinger: options.tcpLinger,
     poolIdleTimeout: options.poolIdleTimeout,
     poolMaxIdlePerHost: options.poolMaxIdlePerHost,
     poolMaxSize: options.poolMaxSize,

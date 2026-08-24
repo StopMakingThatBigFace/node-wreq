@@ -213,6 +213,25 @@ describe('response behavior', () => {
     );
   });
 
+  test('should preserve the consumed body lifecycle after native convenience reads', async () => {
+    const response = await fetch(`${getBaseUrl()}/cookies/echo`);
+    const pendingText = response.text();
+
+    assert.strictEqual(response.bodyUsed, true, 'starting a convenience read should disturb body');
+    assert.ok(response.body, 'a consumed native response should retain its body stream');
+    assert.strictEqual(response.body.locked, true, 'the consumed body stream should remain locked');
+
+    const text = await pendingText;
+
+    assert.ok(text.includes('"cookie":""'), 'the native fast path should return the full body');
+
+    await assert.rejects(
+      response.arrayBuffer(),
+      (error: unknown) => error instanceof TypeError && error.message.includes('already been read'),
+      'a native response body should remain single-use'
+    );
+  });
+
   test('should support parallel clone consumption for native-backed streamed responses', async () => {
     const response = await fetch(`${getBaseUrl()}/cookies/echo`);
     const cloned = response.clone();
