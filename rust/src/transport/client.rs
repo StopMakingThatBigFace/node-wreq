@@ -20,6 +20,7 @@ struct ClientConfig {
     dns: Option<DnsOptions>,
     timeout: Option<u64>,
     connect_timeout: Option<u64>,
+    tcp_linger: Option<u64>,
     pool_idle_timeout: Option<PoolIdleTimeout>,
     pool_max_idle_per_host: Option<usize>,
     pool_max_size: Option<usize>,
@@ -44,6 +45,7 @@ impl From<&RequestOptions> for ClientConfig {
             dns: options.dns.clone(),
             timeout: None,
             connect_timeout: options.connect_timeout,
+            tcp_linger: options.tcp_linger,
             pool_idle_timeout: options.pool_idle_timeout.clone(),
             pool_max_idle_per_host: options.pool_max_idle_per_host,
             pool_max_size: options.pool_max_size,
@@ -70,6 +72,7 @@ impl From<&WebSocketConnectOptions> for ClientConfig {
             dns: options.dns.clone(),
             timeout: options.timeout,
             connect_timeout: None,
+            tcp_linger: options.tcp_linger,
             pool_idle_timeout: options.pool_idle_timeout.clone(),
             pool_max_idle_per_host: options.pool_max_idle_per_host,
             pool_max_size: options.pool_max_size,
@@ -134,6 +137,9 @@ async fn build_client(config: ClientConfig) -> Result<Client> {
     }
     if let Some(connect_timeout) = config.connect_timeout {
         builder = builder.connect_timeout(Duration::from_millis(connect_timeout));
+    }
+    if let Some(tcp_linger) = config.tcp_linger {
+        builder = builder.tcp_linger(Duration::from_millis(tcp_linger));
     }
     if let Some(pool_idle_timeout) = config.pool_idle_timeout {
         builder = match pool_idle_timeout {

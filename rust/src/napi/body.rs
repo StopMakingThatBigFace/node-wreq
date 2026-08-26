@@ -1,4 +1,5 @@
-use crate::store::body_store::{cancel_body, forbid_body_recycle, read_body_chunk};
+use crate::store::body_store::{cancel_body, forbid_body_recycle, read_body_all, read_body_chunk};
+use crate::store::runtime::runtime;
 use neon::prelude::*;
 use neon::types::JsBuffer;
 
@@ -13,8 +14,8 @@ fn read_body_chunk_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let channel = cx.channel();
     let (deferred, promise) = cx.promise();
 
-    std::thread::spawn(move || {
-        let result = read_body_chunk(handle, size);
+    let _body_task = runtime().spawn(async move {
+        let result = read_body_chunk(handle, size).await;
 
         deferred.settle_with(&channel, move |mut cx| match result {
             Ok((chunk, done)) => {
@@ -37,6 +38,23 @@ fn cancel_body_js(mut cx: FunctionContext) -> JsResult<JsBoolean> {
     Ok(cx.boolean(cancel_body(handle)))
 }
 
+fn read_body_all_js(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    let _body_task = runtime().spawn(async move {
+        let result = read_body_all(handle).await;
+
+        deferred.settle_with(&channel, move |mut cx| match result {
+            Ok(body) => Ok(JsBuffer::from_slice(&mut cx, &body)?),
+            Err(error) => cx.throw_error(format!("{error:#}")),
+        });
+    });
+
+    Ok(promise)
+}
+
 fn forbid_body_recycle_js(mut cx: FunctionContext) -> JsResult<JsBoolean> {
     let handle = cx.argument::<JsNumber>(0)?.value(&mut cx) as u64;
 
@@ -48,6 +66,7 @@ fn forbid_body_recycle_js(mut cx: FunctionContext) -> JsResult<JsBoolean> {
 
 pub fn register(cx: &mut ModuleContext) -> NeonResult<()> {
     cx.export_function("readBodyChunk", read_body_chunk_js)?;
+    cx.export_function("readBodyAll", read_body_all_js)?;
     cx.export_function("cancelBody", cancel_body_js)?;
     cx.export_function("forbidBodyRecycle", forbid_body_recycle_js)?;
     Ok(())

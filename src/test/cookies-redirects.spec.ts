@@ -163,6 +163,84 @@ describe('cookies and redirects', () => {
     assert.strictEqual(body.method, 'GET', '302 redirect from POST should be rewritten to GET');
   });
 
+  test('should return 300 Multiple Choices without following Location', async () => {
+    const response = await fetch(`${getBaseUrl()}/redirect/multiple-choices`);
+
+    assert.strictEqual(response.status, 300);
+    assert.strictEqual(response.headers.get('location'), '/redirect/final');
+    assert.strictEqual(response.redirected, false);
+    assert.deepStrictEqual(response.wreq.redirectChain, []);
+  });
+
+  test('should apply response Referrer-Policy across redirects', async () => {
+    const sameOriginReferrer = `${getBaseUrl()}/private/path?token=secret#fragment`;
+    const crossOriginReferrer = 'https://source.example/private/path?token=secret#fragment';
+    const cases = [
+      { policy: 'no-referrer', referrer: sameOriginReferrer, expected: '' },
+      { policy: 'no-referrer-when-downgrade', referrer: crossOriginReferrer, expected: '' },
+      {
+        policy: 'same-origin',
+        referrer: sameOriginReferrer,
+        expected: `${getBaseUrl()}/private/path?token=secret`,
+      },
+      { policy: 'origin', referrer: crossOriginReferrer, expected: 'https://source.example/' },
+      { policy: 'strict-origin', referrer: crossOriginReferrer, expected: '' },
+      {
+        policy: 'origin-when-cross-origin',
+        referrer: crossOriginReferrer,
+        expected: 'https://source.example/',
+      },
+      { policy: 'strict-origin-when-cross-origin', referrer: crossOriginReferrer, expected: '' },
+      {
+        policy: 'unsafe-url',
+        referrer: crossOriginReferrer,
+        expected: 'https://source.example/private/path?token=secret',
+      },
+    ];
+
+    for (const { policy, referrer, expected } of cases) {
+      const start = new URL('/redirect/start', getBaseUrl());
+
+      start.searchParams.set('referrerPolicy', policy);
+
+      const response = await fetch(start, {
+        headers: { Referer: referrer },
+      });
+
+      const body = await response.json<{ referrer: string }>();
+
+      assert.strictEqual(body.referrer, expected, policy);
+    }
+  });
+
+  test('should strip credentials and cookies on cross-origin redirects', async () => {
+    const target = new URL('/redirect/final', getBaseUrl());
+
+    target.hostname = 'localhost';
+
+    const start = new URL('/redirect/start', getBaseUrl());
+
+    start.searchParams.set('target', target.toString());
+
+    const response = await fetch(start, {
+      headers: {
+        authorization: 'Bearer secret',
+        cookie: 'manual_session=secret',
+        'proxy-authorization': 'Basic secret',
+      },
+    });
+
+    const body = await response.json<{
+      authorization: string;
+      cookie: string;
+      proxyAuthorization: string;
+    }>();
+
+    assert.strictEqual(body.authorization, '');
+    assert.strictEqual(body.cookie, '');
+    assert.strictEqual(body.proxyAuthorization, '');
+  });
+
   test('should support manual redirect mode', async () => {
     const response = await fetch(`${getBaseUrl()}/redirect/start`, {
       redirect: 'manual',

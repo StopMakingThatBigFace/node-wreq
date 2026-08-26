@@ -12,7 +12,12 @@ import { ReadableStream } from 'node:stream/web';
 import { TextDecoder } from 'node:util';
 import { RequestError, TimeoutError } from '../errors';
 import { Headers } from '../headers';
-import { nativeCancelBody, nativeForbidBodyRecycle, nativeReadBodyChunk } from '../native/index';
+import {
+  nativeCancelBody,
+  nativeForbidBodyRecycle,
+  nativeReadBodyAll,
+  nativeReadBodyChunk,
+} from '../native/index';
 import { cloneBytes } from './body/bytes';
 import { parseResponseFormData } from './body/form-data';
 import { ResponseMeta } from './response-meta';
@@ -420,9 +425,43 @@ export class Response {
     return this.#stream;
   }
 
+  #lockConsumedBodyStream(): void {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    });
+
+    this.#streamSource = stream;
+    this.#stream = stream;
+    this.#orphanedStreamReaders.push(stream.getReader());
+  }
+
   async #consumeBytes(): Promise<Uint8Array> {
     if (this.#isBodyUnusable()) {
       throw new TypeError('Body is unusable: Body has already been read');
+    }
+
+    if (this.#bodyHandle !== null) {
+      const handle = this.#bodyHandle;
+
+      this.#bodyHandle = null;
+      this.#bodyUsed = true;
+      bodyFinalizer.unregister(this.#bodyFinalizerToken);
+      this.#lockConsumedBodyStream();
+
+      try {
+        const bytes = await nativeReadBodyAll(handle);
+
+        this.#payloadBytes = new Uint8Array(bytes);
+
+        return new Uint8Array(this.#payloadBytes);
+      } catch (error) {
+        nativeCancelBody(handle);
+        throw toBodyReadError(error);
+      } finally {
+        this.#markBodyComplete();
+      }
     }
 
     const stream = this.#ensureStream();

@@ -4,6 +4,7 @@ import {
   normalizeDnsOptions,
   normalizeLocalBindOptions,
   normalizeProxyOptions,
+  normalizeTcpLinger,
 } from '../config/network';
 import {
   normalizeCertificateAuthority,
@@ -380,6 +381,7 @@ export class WebSocket extends EventTarget {
         disableSystemProxy,
         dns: normalizeDnsOptions(init.dns),
         ...resolveNativeTimeout(init.timeout),
+        tcpLinger: normalizeTcpLinger(init.tcpLinger),
         poolIdleTimeout: init.poolIdleTimeout,
         poolMaxIdlePerHost: init.poolMaxIdlePerHost,
         poolMaxSize: init.poolMaxSize,

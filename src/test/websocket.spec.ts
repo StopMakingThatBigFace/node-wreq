@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { Buffer } from 'node:buffer';
 import { describe, test } from 'node:test';
+import { toCookieOriginUrl } from '../http/pipeline/cookies';
 import {
   CloseEvent as WreqCloseEvent,
   WebSocket as WreqWebSocket,
@@ -185,8 +186,13 @@ describe('websocket', () => {
   });
 
   test('should send cookieJar cookies during websocket handshake', async () => {
+    const cookieLookups: string[] = [];
     const cookieJar = {
-      getCookies: () => [{ name: 'session', value: 'ws123' }],
+      getCookies: (url: string) => {
+        cookieLookups.push(url);
+
+        return [{ name: 'session', value: 'ws123' }];
+      },
       setCookie: () => {},
     };
 
@@ -202,11 +208,25 @@ describe('websocket', () => {
       'cookieJar cookies should be sent during the websocket handshake'
     );
 
+    assert.deepStrictEqual(cookieLookups, [`${getBaseUrl()}/ws`]);
+
     const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
 
     socket.close(1000, 'done');
 
     await closePromise;
+  });
+
+  test('should map websocket URLs to their HTTP cookie origins', () => {
+    assert.strictEqual(
+      toCookieOriginUrl('ws://example.com/socket?channel=updates'),
+      'http://example.com/socket?channel=updates'
+    );
+
+    assert.strictEqual(
+      toCookieOriginUrl('wss://example.com/socket?channel=updates'),
+      'https://example.com/socket?channel=updates'
+    );
   });
 
   test('should reject websocket URLs with fragments', () => {
@@ -293,6 +313,24 @@ describe('websocket', () => {
         error instanceof TypeError &&
         error.message.includes('localAddress must be a valid IPv4 or IPv6 address')
     );
+  });
+
+  test('should configure and validate WebSocket TCP linger', async () => {
+    const socket = await websocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      tcpLinger: 0,
+    });
+
+    const closePromise = onceEvent<WreqCloseEvent>(socket, 'close');
+
+    socket.close(1000, 'done');
+
+    await closePromise;
+
+    const invalid = new WreqWebSocket(getBaseUrl().replace('http://', 'ws://') + '/ws', {
+      tcpLinger: -1,
+    });
+
+    await assert.rejects(invalid.opened, /tcpLinger must be a finite non-negative number/);
   });
 
   test('should support explicit WebSocket HTTP version selection', async () => {

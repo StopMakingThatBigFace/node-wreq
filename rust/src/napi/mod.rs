@@ -1,5 +1,6 @@
 mod body;
 mod convert;
+mod error;
 mod profiles;
 mod request;
 mod upload;

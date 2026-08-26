@@ -119,6 +119,8 @@ export interface WreqInit extends Omit<
   readTimeout?: number;
   /** Connection establishment timeout in milliseconds. */
   connectTimeout?: number;
+  /** Socket linger duration in milliseconds; zero requests an abortive close. */
+  tcpLinger?: number;
   /** Maximum idle time for pooled connections, or `false` to disable idle expiry. */
   poolIdleTimeout?: number | false;
   /** Maximum idle pooled connections retained per origin. */

@@ -622,6 +622,7 @@ pub(crate) fn js_object_to_request_options(
     let timeout = js_value_to_non_negative_timeout_ms(cx, obj, "timeout")?;
     let read_timeout = js_value_to_non_negative_timeout_ms(cx, obj, "readTimeout")?;
     let connect_timeout = js_value_to_non_negative_timeout_ms(cx, obj, "connectTimeout")?;
+    let tcp_linger = js_value_to_non_negative_timeout_ms(cx, obj, "tcpLinger")?;
     let pool_idle_timeout = js_object_to_pool_idle_timeout(cx, obj)?;
     let pool_max_idle_per_host = obj
         .get_opt(cx, "poolMaxIdlePerHost")?
@@ -700,6 +701,7 @@ pub(crate) fn js_object_to_request_options(
         timeout,
         read_timeout,
         connect_timeout,
+        tcp_linger,
         pool_idle_timeout,
         pool_max_idle_per_host,
         pool_max_size,
@@ -760,6 +762,7 @@ pub(crate) fn js_object_to_websocket_options(
         Some(timeout) => Some(timeout),
         None => Some(30000),
     };
+    let tcp_linger = js_value_to_non_negative_timeout_ms(cx, obj, "tcpLinger")?;
     let pool_idle_timeout = js_object_to_pool_idle_timeout(cx, obj)?;
     let pool_max_idle_per_host = obj
         .get_opt(cx, "poolMaxIdlePerHost")?
@@ -844,6 +847,7 @@ pub(crate) fn js_object_to_websocket_options(
         disable_system_proxy,
         dns,
         timeout,
+        tcp_linger,
         pool_idle_timeout,
         pool_max_idle_per_host,
         pool_max_size,

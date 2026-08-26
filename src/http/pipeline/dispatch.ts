@@ -2,6 +2,7 @@ import type { NativeRequestOptions, RequestStats, WreqInit } from '../../types';
 import { AbortError, RequestError, TimeoutError } from '../../errors';
 import { nativeRequest } from '../../native/index';
 import { Response } from '../response';
+import { inferErrorCode } from './errors';
 
 export async function reportStats(
   callback: WreqInit['onStats'] | undefined,
@@ -31,7 +32,10 @@ export async function dispatchNativeRequest(
       throw new TimeoutError(message, { cause: error });
     }
 
-    throw new RequestError(message, { cause: error });
+    throw new RequestError(message, {
+      cause: error,
+      code: inferErrorCode(error),
+    });
   });
 
   const responseStart = Date.now();

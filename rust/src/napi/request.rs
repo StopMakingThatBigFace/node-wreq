@@ -1,4 +1,5 @@
 use crate::napi::convert::{js_object_to_request_options, response_to_js_object};
+use crate::napi::error::throw_anyhow_error;
 use crate::store::client_store::remove_clients;
 use crate::store::request_store::{
     cancel_request as cancel_request_handle, insert_request, remove_request,
@@ -16,19 +17,17 @@ fn request(mut cx: FunctionContext) -> JsResult<JsObject> {
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     let handle = insert_request(cancel_tx);
 
-    std::thread::spawn(move || {
-        let result = runtime().block_on(async move {
-            tokio::select! {
-                result = make_request(options) => result,
-                _ = cancel_rx => Err(anyhow::anyhow!("Request aborted")),
-            }
-        });
+    let _request_task = runtime().spawn(async move {
+        let result = tokio::select! {
+            result = make_request(options) => result,
+            _ = cancel_rx => Err(anyhow::anyhow!("Request aborted")),
+        };
 
         remove_request(handle);
 
         deferred.settle_with(&channel, move |mut cx| match result {
             Ok(response) => response_to_js_object(&mut cx, response),
-            Err(error) => cx.throw_error(format!("{:#}", error)),
+            Err(error) => throw_anyhow_error(&mut cx, error),
         });
     });
 

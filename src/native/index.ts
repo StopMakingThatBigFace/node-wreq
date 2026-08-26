@@ -6,6 +6,7 @@ export {
   nativeCreateUpload,
   nativeFailUpload,
   nativeFinishUpload,
+  nativeReadBodyAll,
   nativeReadBodyChunk,
   nativeReleaseClient,
   nativeRequest,
