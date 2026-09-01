@@ -583,6 +583,19 @@ describe('transport features', () => {
     );
   });
 
+  test('should request identity encoding for range requests', async () => {
+    const response = await fetch(`${getBaseUrl()}/headers/raw`, {
+      headers: {
+        Range: 'bytes=0-3',
+      },
+    });
+
+    const body = await response.json<{ headers: Record<string, string> }>();
+
+    assert.strictEqual(body.headers.range, 'bytes=0-3');
+    assert.strictEqual(body.headers['accept-encoding'], 'identity');
+  });
+
   test('should omit accept-encoding when compression is disabled', async () => {
     const compressed = await fetch(`${getBaseUrl()}/headers/raw`, {
       browser: 'chrome_137',
@@ -622,6 +635,20 @@ describe('transport features', () => {
       async () => {
         await response.arrayBuffer();
       },
+      (error: unknown) => error instanceof Error && error.name === 'TimeoutError'
+    );
+  });
+
+  test('should enforce total timeout across response headers and body', async () => {
+    const response = await fetch(
+      `${getBaseUrl()}/stream/slow?chunks=2&chunkBytes=1024&headDelayMs=400&delayMs=700`,
+      {
+        timeout: 1_000,
+      }
+    );
+
+    await assert.rejects(
+      response.arrayBuffer(),
       (error: unknown) => error instanceof Error && error.name === 'TimeoutError'
     );
   });

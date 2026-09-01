@@ -228,7 +228,12 @@ export function setupLocalTestServer() {
           const chunks = Math.max(1, Number(url.searchParams.get('chunks') ?? '3'));
           const chunkBytes = Math.max(1, Number(url.searchParams.get('chunkBytes') ?? '1024'));
           const delayMs = Math.max(0, Number(url.searchParams.get('delayMs') ?? '25'));
+          const headDelayMs = Math.max(0, Number(url.searchParams.get('headDelayMs') ?? '0'));
           let sent = 0;
+
+          if (headDelayMs > 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, headDelayMs));
+          }
 
           response.writeHead(200, {
             'content-type': 'application/octet-stream',
