@@ -1,8 +1,11 @@
 import assert from 'node:assert';
 import { Buffer } from 'node:buffer';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { describe, test } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { TextDecoder } from 'node:util';
-import { Response as WreqResponse, fetch } from '../node-wreq';
+import { Response as WreqResponse, createClient, fetch } from '../node-wreq';
 import { setupLocalTestServer } from './helpers/local-server';
 
 describe('response behavior', () => {
@@ -230,6 +233,54 @@ describe('response behavior', () => {
       (error: unknown) => error instanceof TypeError && error.message.includes('already been read'),
       'a native response body should remain single-use'
     );
+  });
+
+  test('should close a stalled HTTP/1.1 connection when a pending body read is cancelled', async () => {
+    let socketClosed: Promise<unknown> | undefined;
+    const server = createServer((request, response) => {
+      socketClosed = once(request.socket, 'close');
+      response.writeHead(200, { 'content-type': 'text/plain' });
+      response.write('first chunk');
+    });
+
+    const client = createClient({ proxy: false, retry: 0 });
+
+    server.listen(0, '127.0.0.1');
+
+    await once(server, 'listening');
+
+    try {
+      const address = server.address();
+
+      assert.ok(address && typeof address !== 'string');
+
+      const response = await client.fetch(`http://127.0.0.1:${address.port}/`, {
+        timeout: 10_000,
+      });
+
+      const reader = response.body!.getReader();
+
+      assert.strictEqual((await reader.read()).done, false);
+
+      const pendingRead = reader.read();
+
+      await sleep(20);
+      await reader.cancel();
+      assert.strictEqual((await pendingRead).done, true);
+      assert.ok(socketClosed);
+
+      const closedPromptly = await Promise.race([
+        socketClosed.then(() => true),
+        sleep(1000, false),
+      ]);
+
+      assert.ok(closedPromptly, 'cancellation should close the socket before the request timeout');
+    } finally {
+      client.close();
+      server.closeAllConnections();
+
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   test('should support parallel clone consumption for native-backed streamed responses', async () => {
