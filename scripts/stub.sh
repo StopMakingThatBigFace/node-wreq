@@ -1,3 +1,13 @@
+#!/usr/bin/env bash
+# Reserves the scoped platform package names on npm with placeholder packages,
+# so trusted publishing can be configured for them before the first release.
+#
+# Packages that already exist on npm are skipped, so this can be re-run every
+# time a platform is added. Extra arguments go to `npm publish`:
+#
+#   ./scripts/stub.sh --dry-run
+set -euo pipefail
+
 VERSION=0.0.0-reserved.0
 OUT=.release-stubs
 
@@ -36,18 +46,33 @@ Do not install this package directly.
 EOF
 }
 
-create_stub "darwin-x64" "@node-wreq/darwin-x64" '["darwin"]' '["x64"]' ''
-create_stub "darwin-arm64" "@node-wreq/darwin-arm64" '["darwin"]' '["arm64"]' ''
-create_stub "linux-x64-gnu" "@node-wreq/linux-x64-gnu" '["linux"]' '["x64"]' '["glibc"]'
-create_stub "linux-arm64-gnu" "@node-wreq/linux-arm64-gnu" '["linux"]' '["arm64"]' '["glibc"]'
-create_stub "linux-x64-musl" "@node-wreq/linux-x64-musl" '["linux"]' '["x64"]' '["musl"]'
-create_stub "linux-arm64-musl" "@node-wreq/linux-arm64-musl" '["linux"]' '["arm64"]' '["musl"]'
-create_stub "win32-x64-msvc" "@node-wreq/win32-x64-msvc" '["win32"]' '["x64"]' ''
+reserve () {
+  DIR="$1"
+  NAME="$2"
 
-npm publish "$OUT/darwin-x64" --access public --tag reserved
-npm publish "$OUT/darwin-arm64" --access public --tag reserved
-npm publish "$OUT/linux-x64-gnu" --access public --tag reserved
-npm publish "$OUT/linux-arm64-gnu" --access public --tag reserved
-npm publish "$OUT/linux-x64-musl" --access public --tag reserved
-npm publish "$OUT/linux-arm64-musl" --access public --tag reserved
-npm publish "$OUT/win32-x64-msvc" --access public --tag reserved
+  if VIEW_OUTPUT="$(npm view "$NAME" name 2>&1)"; then
+    echo "skip    $NAME (already on npm)"
+    return
+  fi
+
+  # Only a 404 means the name is free; anything else (network, auth) is fatal.
+  if ! printf '%s\n' "$VIEW_OUTPUT" | grep -q 'E404'; then
+    echo "Could not check whether $NAME exists on npm:" >&2
+    printf '%s\n' "$VIEW_OUTPUT" >&2
+    exit 1
+  fi
+
+  echo "reserve $NAME"
+  create_stub "$@"
+  npm publish "$OUT/$DIR" --access public --tag reserved ${PUBLISH_ARGS[@]+"${PUBLISH_ARGS[@]}"}
+}
+
+PUBLISH_ARGS=("$@")
+
+reserve "darwin-x64" "@node-wreq/darwin-x64" '["darwin"]' '["x64"]' ''
+reserve "darwin-arm64" "@node-wreq/darwin-arm64" '["darwin"]' '["arm64"]' ''
+reserve "linux-x64-gnu" "@node-wreq/linux-x64-gnu" '["linux"]' '["x64"]' '["glibc"]'
+reserve "linux-arm64-gnu" "@node-wreq/linux-arm64-gnu" '["linux"]' '["arm64"]' '["glibc"]'
+reserve "linux-x64-musl" "@node-wreq/linux-x64-musl" '["linux"]' '["x64"]' '["musl"]'
+reserve "linux-arm64-musl" "@node-wreq/linux-arm64-musl" '["linux"]' '["arm64"]' '["musl"]'
+reserve "win32-x64-msvc" "@node-wreq/win32-x64-msvc" '["win32"]' '["x64"]' ''
