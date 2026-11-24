@@ -40,24 +40,18 @@ Scoped package names:
 - GitHub repository set up
 - npm trusted publishing configured for each package you publish from this workflow
 
-#### 1. Update Version
-
-```bash
-# Bump version using npm
-npm version patch  # 0.1.0 → 0.1.1
-npm version minor  # 0.1.0 → 0.2.0
-npm version major  # 0.1.0 → 1.0.0
-```
+When a platform is added, its scoped package has to exist on npm before trusted publishing can be
+configured for it. `./scripts/stub.sh` publishes a placeholder for every platform package that is
+not on npm yet and skips the ones that are (`./scripts/stub.sh --dry-run` shows what it would do).
 
 #### 2. Create GitHub Release
 
-```bash
-# Push version tag
-git push --follow-tags
+The published version comes from the release tag, not from `package.json`: the root
+`package.json` stays on its placeholder version and does not need to be bumped.
 
-# Or manually create tag
-git tag v0.1.0
-git push origin v0.1.0
+```bash
+git tag v1.2.3
+git push origin v1.2.3
 ```
 
 Then create a GitHub Release from this tag. This will trigger the build workflow.
@@ -136,7 +130,7 @@ Use GitHub Actions unless you have a specific reason not to.
 
 - Check that all platform targets are properly configured
 - Verify Rust toolchain is installed correctly
-- Check CMake is available (required for BoringSSL)
+- Check CMake and Clang are available (required for BoringSSL and its bindings)
 
 ### Module Load Error After Install
 

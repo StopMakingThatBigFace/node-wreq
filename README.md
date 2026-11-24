@@ -68,7 +68,7 @@ Node.js 20+ is required.
 import { fetch } from 'node-wreq';
 
 const response = await fetch('https://httpbin.org/get', {
-  browser: 'chrome_137',
+  browser: 'chrome_149',
 });
 
 console.log(response.status);
@@ -82,7 +82,7 @@ import { createClient } from 'node-wreq';
 
 const client = createClient({
   baseURL: 'https://httpbin.org',
-  browser: 'chrome_137',
+  browser: 'chrome_149',
   headers: {
     'x-client': 'node-wreq',
   },
@@ -118,7 +118,7 @@ const response = await fetch('https://httpbin.org/get', {
   timeout: 15_000,
 });
 
-const body = await response.json();
+const body = await response.json<{ args: Record<string, string> }>();
 
 console.log(response.ok);
 console.log(body.args);
@@ -131,7 +131,7 @@ import { fetch } from 'node-wreq';
 
 const response = await fetch('https://api.example.com/items', {
   method: 'POST',
-  browser: 'chrome_137',
+  browser: 'chrome_149',
   headers: {
     'content-type': 'application/json',
   },
@@ -181,7 +181,7 @@ const request = new Request('https://httpbin.org/post', {
 });
 
 const response = await fetch(request, {
-  browser: 'chrome_137',
+  browser: 'chrome_149',
 });
 
 console.log(await response.json());
@@ -193,7 +193,7 @@ console.log(await response.json());
 
 ```ts
 const response = await fetch('https://example.com', {
-  browser: 'chrome_137',
+  browser: 'chrome_149',
 });
 
 console.log(response.status);
@@ -234,7 +234,7 @@ import { createClient } from 'node-wreq';
 
 const client = createClient({
   baseURL: 'https://api.example.com',
-  browser: 'chrome_137',
+  browser: 'chrome_149',
   timeout: 10_000,
   headers: {
     authorization: `Bearer ${process.env.API_TOKEN}`,
@@ -270,7 +270,7 @@ client.close();
 ```ts
 const base = createClient({
   baseURL: 'https://api.example.com',
-  browser: 'chrome_137',
+  browser: 'chrome_149',
 });
 
 const admin = base.extend({
@@ -518,7 +518,7 @@ const cookieJar = {
 };
 
 const client = createClient({
-  browser: 'chrome_137',
+  browser: 'chrome_149',
   cookieJar,
 });
 
@@ -609,8 +609,9 @@ Defaults:
 
 - retry is off unless you enable it
 - default retry methods are `GET` and `HEAD`
-- default status codes include `408`, `425`, `429`, `500`, `502`, `503`, `504`
-- default error codes include `ECONNRESET`, `ECONNREFUSED`, `ETIMEDOUT`, `ERR_TIMEOUT`
+- default status codes are `408`, `425`, `429`, `500`, `502`, `503`, `504`
+- default error codes are `ECONNABORTED`, `ECONNRESET`, `ECONNREFUSED`, `EPIPE`, `ETIMEDOUT`,
+  `ERR_ABORTED`, `ERR_TIMEOUT`
 
 ## 📊 <a id="observability"></a>observability   ·   [↑](#contents)
 
@@ -639,7 +640,7 @@ await fetch('https://example.com', {
 
 ```ts
 const response = await fetch('https://example.com', {
-  browser: 'chrome_137',
+  browser: 'chrome_149',
 });
 
 console.log(response.wreq.timings);
@@ -660,7 +661,9 @@ Main error classes:
 - `TimeoutError`
 - `AbortError`
 - `WebSocketError`
-- `ERR_DNS`
+
+Every error carries a machine-readable `code` when one is available, for example `ERR_TIMEOUT`,
+`ERR_HTTP_STATUS`, or `ERR_DNS` for failed hostname lookups.
 
 Typical patterns:
 
@@ -676,7 +679,7 @@ try {
   if (error instanceof TimeoutError) {
     console.error('request timed out');
   } else if (error instanceof HTTPError) {
-    console.error('bad status', error.statusCode);
+    console.error('bad status', error.status);
   } else {
     console.error(error);
   }
@@ -696,7 +699,7 @@ You can use either:
 import { websocket } from 'node-wreq';
 
 const socket = await websocket('wss://echo.websocket.events', {
-  browser: 'chrome_137',
+  browser: 'chrome_149',
   protocols: ['chat'],
 });
 
@@ -734,7 +737,7 @@ Useful when you want shared defaults like browser, proxy, or cookies:
 
 ```ts
 const client = createClient({
-  browser: 'chrome_137',
+  browser: 'chrome_149',
   cookieJar: yourCookieJar,
 });
 
@@ -757,7 +760,7 @@ Everything else here is for debugging request shape, fingerprint-sensitive targe
 
 ```ts
 const response = await fetch('https://httpbin.org/anything', {
-  browser: 'chrome_137',
+  browser: 'chrome_149',
   proxy: 'http://username:password@proxy.example.com:8080',
   timeout: 10_000,
 });
@@ -813,7 +816,7 @@ await fetch('https://example.com', {
 });
 ```
 
-For example, with `browser: 'chrome_137'`, the default request would normally include Chrome-like `sec-ch-*`, `sec-fetch-*`, `user-agent`, `accept`, and `accept-language` headers. With `disableDefaultHeaders: true`, those browser preset headers are skipped, while transport headers like `host` and `accept-encoding` may still be present.
+For example, with `browser: 'chrome_149'`, the default request would normally include Chrome-like `sec-ch-*`, `sec-fetch-*`, `user-agent`, `accept`, and `accept-language` headers. With `disableDefaultHeaders: true`, those browser preset headers are skipped, while transport headers like `host` and `accept-encoding` may still be present.
 
 ### exact header order
 
@@ -838,7 +841,7 @@ If a browser preset gets you close but not all the way there:
 
 ```ts
 await fetch('https://example.com', {
-  browser: 'chrome_137',
+  browser: 'chrome_149',
   tlsOptions: {
     greaseEnabled: true,
     keyShares: ['X25519_MLKEM768', 'X25519', 'P256'],
