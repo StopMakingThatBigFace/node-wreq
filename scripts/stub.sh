@@ -41,6 +41,7 @@ create_stub "darwin-arm64" "@node-wreq/darwin-arm64" '["darwin"]' '["arm64"]' ''
 create_stub "linux-x64-gnu" "@node-wreq/linux-x64-gnu" '["linux"]' '["x64"]' '["glibc"]'
 create_stub "linux-arm64-gnu" "@node-wreq/linux-arm64-gnu" '["linux"]' '["arm64"]' '["glibc"]'
 create_stub "linux-x64-musl" "@node-wreq/linux-x64-musl" '["linux"]' '["x64"]' '["musl"]'
+create_stub "linux-arm64-musl" "@node-wreq/linux-arm64-musl" '["linux"]' '["arm64"]' '["musl"]'
 create_stub "win32-x64-msvc" "@node-wreq/win32-x64-msvc" '["win32"]' '["x64"]' ''
 
 npm publish "$OUT/darwin-x64" --access public --tag reserved
@@ -48,4 +49,5 @@ npm publish "$OUT/darwin-arm64" --access public --tag reserved
 npm publish "$OUT/linux-x64-gnu" --access public --tag reserved
 npm publish "$OUT/linux-arm64-gnu" --access public --tag reserved
 npm publish "$OUT/linux-x64-musl" --access public --tag reserved
+npm publish "$OUT/linux-arm64-musl" --access public --tag reserved
 npm publish "$OUT/win32-x64-msvc" --access public --tag reserved

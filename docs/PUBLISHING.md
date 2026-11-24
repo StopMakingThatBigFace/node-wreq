@@ -29,6 +29,7 @@ Scoped package names:
 - `@node-wreq/linux-x64-gnu`
 - `@node-wreq/linux-arm64-gnu`
 - `@node-wreq/linux-x64-musl`
+- `@node-wreq/linux-arm64-musl`
 - `@node-wreq/win32-x64-msvc`
 
 ### Publishing Process
