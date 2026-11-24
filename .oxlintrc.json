@@ -23,7 +23,6 @@
     "**/.release-stubs/**",
     "**/.tmp-release/**",
     "**/artifacts/**",
-    "**/src/generated/**",
     "**/src/config/generated/**"
   ],
   "rules": {
