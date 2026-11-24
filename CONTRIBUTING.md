@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- Node.js >= 18
+- Node.js >= 20
 - Rust toolchain (see [docs/BUILD.md](docs/BUILD.md))
 - Git
 
@@ -38,10 +38,16 @@ Use descriptive branch names:
 
 ### Code Style
 
-Use Prettier for formatting:
+Formatting is done with `oxfmt` and linting with `oxlint`; Rust code uses `rustfmt` and `clippy`:
 ```bash
 npm run format
+npm run lint
+
+npm run format:rust
+npm run lint:rust
 ```
+
+The pre-commit hook formats and lints staged files.
 
 ## 📝 Commit Message Guidelines
 
@@ -102,8 +108,9 @@ test('test1', () => {
 # Run all tests
 npm test
 
-# Run specific test file
-npm test -- path/to/test.spec.ts
+# Run a specific test file (tests run from the compiled output in dist/)
+npm run build
+node --test dist/test/http-client.spec.js
 ```
 
 ## 🙏 Thank You!

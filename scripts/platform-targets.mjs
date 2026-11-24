@@ -38,6 +38,14 @@ export const platformTargets = [
     libc: ['musl'],
   },
   {
+    target: 'aarch64-unknown-linux-musl',
+    packageName: '@node-wreq/linux-arm64-musl',
+    binaryName: 'node-wreq.linux-arm64-musl.node',
+    os: ['linux'],
+    cpu: ['arm64'],
+    libc: ['musl'],
+  },
+  {
     target: 'x86_64-pc-windows-msvc',
     packageName: '@node-wreq/win32-x64-msvc',
     binaryName: 'node-wreq.win32-x64-msvc.node',

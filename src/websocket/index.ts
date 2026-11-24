@@ -1,4 +1,4 @@
-import type { WebSocketBinaryType, WebSocketInit } from '../types';
+import type { WebSocketBinaryType, WebSocketEventMap, WebSocketInit } from '../types';
 import { serializeEmulationOptions } from '../config/emulation';
 import {
   normalizeDnsOptions,
@@ -92,6 +92,16 @@ function resolveNativeWebSocketBufferSize(
 
   return { [name]: Math.max(1, Math.ceil(value)) };
 }
+
+// Derived from EventTarget so the signatures match both Node's and the DOM's typings.
+type GenericEventListener = Parameters<EventTarget['addEventListener']>[1];
+type AddListenerOptions = Parameters<EventTarget['addEventListener']>[2];
+type RemoveListenerOptions = Parameters<EventTarget['removeEventListener']>[2];
+
+type WebSocketEventListener<K extends keyof WebSocketEventMap> =
+  | ((event: WebSocketEventMap[K]) => void)
+  | { handleEvent(event: WebSocketEventMap[K]): void }
+  | null;
 
 type OpenHandler = ((event: Event) => void) | null;
 type MessageHandler = ((event: MessageEvent) => void) | null;
@@ -254,6 +264,36 @@ export class WebSocket extends EventTarget {
   set onerror(handler: ErrorHandler) {
     this.#setEventHandler('error', this.#onerror, handler);
     this.#onerror = handler;
+  }
+
+  /** Registers a listener; `open`, `message`, `close` and `error` events are typed. */
+  addEventListener<K extends keyof WebSocketEventMap>(
+    type: K,
+    listener: WebSocketEventListener<K>,
+    options?: AddListenerOptions
+  ): void;
+  addEventListener(
+    type: string,
+    listener: GenericEventListener,
+    options?: AddListenerOptions
+  ): void;
+  addEventListener(type: string, listener: unknown, options?: AddListenerOptions): void {
+    super.addEventListener(type, listener as GenericEventListener, options);
+  }
+
+  /** Removes a listener previously registered with `addEventListener`. */
+  removeEventListener<K extends keyof WebSocketEventMap>(
+    type: K,
+    listener: WebSocketEventListener<K>,
+    options?: RemoveListenerOptions
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: GenericEventListener,
+    options?: RemoveListenerOptions
+  ): void;
+  removeEventListener(type: string, listener: unknown, options?: RemoveListenerOptions): void {
+    super.removeEventListener(type, listener as GenericEventListener, options);
   }
 
   /** Queues a text or binary message for sending. */

@@ -26,6 +26,7 @@ jobs:
             build: npm run build:rust -- --target aarch64-apple-darwin
           - host: ubuntu-latest
             target: x86_64-unknown-linux-musl
+            musl_arch: x86_64
             setup: |
               set -eux
               TOOLCHAIN_URL="https://github.com/troglobit/misc/releases/download/11-20211120/x86_64-linux-musl-cross.tgz"
@@ -40,6 +41,25 @@ jobs:
 
               echo "$TOOLCHAIN_DIR/bin" >> "$GITHUB_PATH"
             build: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc CC_x86_64_unknown_linux_musl=x86_64-linux-musl-gcc CXX_x86_64_unknown_linux_musl=x86_64-linux-musl-g++ AR_x86_64_unknown_linux_musl=x86_64-linux-musl-ar RANLIB_x86_64_unknown_linux_musl=x86_64-linux-musl-ranlib npm run build:rust -- --target x86_64-unknown-linux-musl
+          - host: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            musl_arch: aarch64
+            setup: |
+              set -eux
+              TOOLCHAIN_URL="https://github.com/troglobit/misc/releases/download/11-20211120/aarch64-linux-musl-cross.tgz"
+              TOOLCHAIN_ROOT="$HOME/musl-cross"
+              TOOLCHAIN_DIR="$TOOLCHAIN_ROOT/aarch64-linux-musl-cross"
+
+              if [ ! -d "$TOOLCHAIN_DIR" ]; then
+                mkdir -p "$TOOLCHAIN_ROOT"
+                curl -L "$TOOLCHAIN_URL" -o /tmp/aarch64-linux-musl-cross.tgz
+                tar -xzf /tmp/aarch64-linux-musl-cross.tgz -C "$TOOLCHAIN_ROOT"
+              fi
+
+              echo "$TOOLCHAIN_DIR/bin" >> "$GITHUB_PATH"
+              # bindgen would otherwise pick up the host's x86_64 glibc headers
+              echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_musl=--sysroot=$TOOLCHAIN_DIR/aarch64-linux-musl" >> "$GITHUB_ENV"
+            build: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc CXX_aarch64_unknown_linux_musl=aarch64-linux-musl-g++ AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar RANLIB_aarch64_unknown_linux_musl=aarch64-linux-musl-ranlib npm run build:rust -- --target aarch64-unknown-linux-musl
           - host: windows-latest
             target: x86_64-pc-windows-msvc
             build: npm run build:rust -- --target x86_64-pc-windows-msvc
@@ -69,11 +89,11 @@ jobs:
           shared-key: ${{ matrix.settings.target }}
 
       - name: Cache musl cross toolchain
-        if: matrix.settings.target == 'x86_64-unknown-linux-musl'
+        if: matrix.settings.musl_arch != ''
         uses: actions/cache@v6
         with:
           path: ~/musl-cross
-          key: musl-cross-${{ runner.os }}-x86_64-11-20211120
+          key: musl-cross-${{ runner.os }}-${{ matrix.settings.musl_arch }}-11-20211120
 
       - name: Install target toolchain dependencies
         if: matrix.settings.setup != ''
@@ -166,10 +186,30 @@ jobs:
           path: ${{ matrix.settings.binary }}
           if-no-files-found: error
 
+  smoke-linux-arm64-musl:
+    name: Smoke test - aarch64-unknown-linux-musl
+    runs-on: ubuntu-24.04-arm
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: bindings-aarch64-unknown-linux-musl
+          path: rust
+
+      - name: Smoke test native module on Alpine
+        run: |
+          docker run --rm -v "$PWD:/work:ro" -w /work \
+            node:20.20.2-alpine3.22@sha256:8f47899606d000b0704e992f927fe7335adcd0d6c98851600072fb6e14a13e60 \
+            node ./scripts/smoke-native.mjs rust/node-wreq.linux-arm64-musl.node
+
   publish:
     name: Publish platform package - ${{ matrix.settings.target }}
     runs-on: ubuntu-latest
-    needs: [build, build-linux-gnu]
+    needs: [build, build-linux-gnu, smoke-linux-arm64-musl]
     if: github.event_name == 'release'
     permissions:
       contents: read
@@ -183,6 +223,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
           - target: aarch64-unknown-linux-gnu
           - target: x86_64-unknown-linux-musl
+          - target: aarch64-unknown-linux-musl
           - target: x86_64-pc-windows-msvc
 
     steps:

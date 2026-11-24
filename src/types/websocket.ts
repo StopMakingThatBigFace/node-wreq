@@ -1,3 +1,4 @@
+import type { CloseEvent } from '../websocket/close-event';
 import type {
   BrowserEmulation,
   BrowserProfile,
@@ -16,6 +17,18 @@ import type {
 
 /** Binary payload representation used by incoming WebSocket messages. */
 export type WebSocketBinaryType = 'blob' | 'arraybuffer';
+
+/** Events dispatched by a WebSocket, keyed by event type. */
+export interface WebSocketEventMap {
+  /** Dispatched once the opening handshake completes. */
+  open: Event;
+  /** Dispatched for every received text or binary message. */
+  message: MessageEvent;
+  /** Dispatched once the connection is closed. */
+  close: CloseEvent;
+  /** Dispatched when the connection fails. */
+  error: Event;
+}
 
 /** Options accepted by the WebSocket constructor and helper. */
 export interface WebSocketInit {

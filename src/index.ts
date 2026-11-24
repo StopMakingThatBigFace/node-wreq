@@ -51,6 +51,7 @@ import type {
   TlsOptions,
   TlsVersion,
   WebSocketBinaryType,
+  WebSocketEventMap,
   WebSocketInit,
   WreqInit,
 } from './types';
@@ -136,6 +137,7 @@ export type {
   TlsOptions,
   TlsVersion,
   WebSocketBinaryType,
+  WebSocketEventMap,
   WebSocketInit,
   WreqInit,
 };

@@ -112,10 +112,16 @@ function loadNativeBinding(): NativeBinding {
               binaryName: 'node-wreq.linux-x64-gnu.node',
               packageName: '@node-wreq/linux-x64-gnu',
             },
-      arm64: {
-        binaryName: 'node-wreq.linux-arm64-gnu.node',
-        packageName: '@node-wreq/linux-arm64-gnu',
-      },
+      arm64:
+        libc === 'musl'
+          ? {
+              binaryName: 'node-wreq.linux-arm64-musl.node',
+              packageName: '@node-wreq/linux-arm64-musl',
+            }
+          : {
+              binaryName: 'node-wreq.linux-arm64-gnu.node',
+              packageName: '@node-wreq/linux-arm64-gnu',
+            },
     },
     win32: {
       x64: {
@@ -130,7 +136,7 @@ function loadNativeBinding(): NativeBinding {
   if (!target) {
     throw new Error(
       `Unsupported platform: ${platform}-${arch}. ` +
-        `Supported platforms: darwin-x64, darwin-arm64, linux-x64-gnu, linux-x64-musl, linux-arm64-gnu, win32-x64-msvc`
+        `Supported platforms: darwin-x64, darwin-arm64, linux-x64-gnu, linux-x64-musl, linux-arm64-gnu, linux-arm64-musl, win32-x64-msvc`
     );
   }
 
